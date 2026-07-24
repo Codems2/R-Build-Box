@@ -7,7 +7,6 @@ import { useSchedule } from '../hooks/useSchedule';
 import { fetchBookingCounts } from '../lib/api';
 import { nextOccurrenceISO } from '../lib/dates';
 import { getMyBooking } from '../lib/myBookings';
-import { GYM_DESCRIPTION } from '../config';
 import {
   DAY_NAMES,
   DAY_NAMES_SHORT,
@@ -84,41 +83,23 @@ export default function SchedulePage() {
     >
       {/* Hero */}
       <section className="pb-8 pt-10 sm:pb-10 sm:pt-14">
-        <motion.p
-          initial={{ opacity: 0, y: 24, scale: 0.96 }}
+        <motion.h1
+          initial={{ opacity: 0, y: 24, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
           lang="th"
-          className="thai-shimmer mb-2 font-thai text-[27px] font-semibold leading-tight sm:text-4xl lg:text-5xl"
+          className="thai-shimmer font-thai text-3xl font-semibold leading-tight sm:text-5xl"
         >
           หัวใจนักสู้ · ศิลปะแห่งอาวุธทั้งแปด
-        </motion.p>
+        </motion.h1>
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, delay: 0.45 }}
-          className="mb-5 text-xs italic tracking-wide text-accent-300/80 sm:text-sm"
+          className="mt-2.5 text-xs tracking-wide text-zinc-500 sm:text-sm"
         >
-          «Corazón de luchador · el arte de las ocho armas»
-        </motion.p>
-        <motion.h1
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: 'easeOut' }}
-          className="font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl"
-        >
-          Horarios de{' '}
-          <span className="bg-gradient-to-r from-brand-400 to-brand-600 bg-clip-text text-transparent">
-            clases
-          </span>
-        </motion.h1>
-        <motion.p
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.08, ease: 'easeOut' }}
-          className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-400 sm:text-base"
-        >
-          {GYM_DESCRIPTION} Toca una clase para reservar tu plaza.
+          Corazón de luchador · el arte de las ocho armas —{' '}
+          <span className="text-zinc-400">toca una clase para reservar tu plaza</span>
         </motion.p>
         {kindsInUse.length > 1 && (
           <motion.div

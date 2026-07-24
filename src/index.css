@@ -36,22 +36,22 @@
   }
 }
 
-/* Texto tailandés del hero: degradado teal con brillo en movimiento */
+/* Texto tailandés del hero: platino con brillo metálico sutil y aura carmesí */
 .thai-shimmer {
   background: linear-gradient(
     100deg,
-    #14b8a6 0%,
-    #5eead4 30%,
-    #ecfdf5 50%,
-    #5eead4 70%,
-    #14b8a6 100%
+    #d4d4d8 0%,
+    #fafafa 35%,
+    #ffffff 50%,
+    #fafafa 65%,
+    #d4d4d8 100%
   );
-  background-size: 200% auto;
+  background-size: 250% auto;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: thai-shimmer 4s linear infinite;
-  filter: drop-shadow(0 0 22px rgba(45, 212, 191, 0.45));
+  animation: thai-shimmer 7s ease-in-out infinite;
+  filter: drop-shadow(0 2px 24px rgba(217, 43, 83, 0.28));
 }
 
 @keyframes thai-shimmer {
