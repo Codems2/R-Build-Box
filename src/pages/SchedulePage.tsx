@@ -89,9 +89,9 @@ export default function SchedulePage() {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
           lang="th"
-          className="thai-shimmer mb-2 font-thai text-3xl font-semibold leading-tight sm:text-5xl"
+          className="thai-shimmer mb-2 font-thai text-[27px] font-semibold leading-tight sm:text-4xl lg:text-5xl"
         >
-          หัวใจนักสู้
+          หัวใจนักสู้ · ศิลปะแห่งอาวุธทั้งแปด
         </motion.p>
         <motion.p
           initial={{ opacity: 0 }}
@@ -99,7 +99,7 @@ export default function SchedulePage() {
           transition={{ duration: 0.6, delay: 0.45 }}
           className="mb-5 text-xs italic tracking-wide text-accent-300/80 sm:text-sm"
         >
-          «Corazón de luchador» · ศิลปะแห่งอาวุธทั้งแปด — el arte de las ocho armas
+          «Corazón de luchador · el arte de las ocho armas»
         </motion.p>
         <motion.h1
           initial={{ opacity: 0, y: 18 }}
