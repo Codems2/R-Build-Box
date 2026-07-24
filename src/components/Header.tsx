@@ -1,13 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CalendarDays, ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '../lib/auth';
-
-const NAV = [
-  { to: '/', label: 'Horarios', icon: CalendarDays },
-  { to: '/admin', label: 'Admin', icon: ShieldCheck },
-];
 
 export default function Header() {
   const { pathname } = useLocation();
@@ -27,34 +22,18 @@ export default function Header() {
           </motion.div>
         </Link>
 
-        <nav className="flex items-center gap-1 rounded-2xl border border-white/[0.06] bg-white/[0.03] p-1">
-          {NAV.map(({ to, label, icon: Icon }) => {
-            const active =
-              to === '/' ? pathname === '/' : pathname.startsWith(to);
-            return (
-              <Link
-                key={to}
-                to={to}
-                className={`relative flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-medium transition ${
-                  active ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                {active && (
-                  <motion.span
-                    layoutId="nav-pill"
-                    className="absolute inset-0 rounded-xl bg-brand-600 shadow-glow"
-                    transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-                  />
-                )}
-                <Icon className="relative z-10 h-4 w-4" />
-                <span className="relative z-10 hidden sm:inline">{label}</span>
-                {to === '/admin' && isAdmin && (
-                  <span className="relative z-10 h-1.5 w-1.5 rounded-full bg-accent-400" />
-                )}
-              </Link>
-            );
-          })}
-        </nav>
+        {/* Acceso al panel solo visible con la sesión de admin iniciada.
+            La ruta /admin sigue existiendo, pero se llega escribiendo la URL. */}
+        {isAdmin && !pathname.startsWith('/admin') && (
+          <Link
+            to="/admin"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2 text-sm font-medium text-zinc-300 transition hover:bg-white/[0.07] hover:text-white"
+          >
+            <ShieldCheck className="h-4 w-4" />
+            Panel admin
+            <span className="h-1.5 w-1.5 rounded-full bg-accent-400" />
+          </Link>
+        )}
       </div>
     </header>
   );
