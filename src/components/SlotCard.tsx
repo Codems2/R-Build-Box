@@ -114,7 +114,7 @@ export default function SlotCard({
       <div className="flex items-start justify-between gap-3 pl-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="truncate font-display text-[15px] font-bold text-white">
+            <h3 className="font-display text-[15px] font-bold leading-snug text-white">
               {slotTitle(slot, classTypes)}
             </h3>
             <span

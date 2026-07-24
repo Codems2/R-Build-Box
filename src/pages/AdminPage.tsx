@@ -257,45 +257,8 @@ function Dashboard() {
                   daySlots.map((slot) => {
                     const color = slotColor(slot, classTypes);
                     const kind = KIND_META[slot.kind];
-                    return (
-                      <motion.div
-                        key={slot.id}
-                        layout
-                        className={`card flex items-center gap-3 p-3.5 ${
-                          slot.is_active ? '' : 'opacity-50'
-                        }`}
-                      >
-                        <span
-                          className="h-10 w-1 shrink-0 rounded-full"
-                          style={{ backgroundColor: color }}
-                          aria-hidden
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="truncate text-sm font-semibold text-white">
-                              {slotTitle(slot, classTypes)}
-                            </p>
-                            <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ${kind.badgeClass}`}
-                            >
-                              {kind.label}
-                            </span>
-                            {!slot.is_active && (
-                              <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                                Oculto
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-0.5 text-xs text-zinc-400">
-                            {formatTime(slot.start_time)} – {endTime(slot.start_time, slot.duration_min)}
-                            <span className="text-zinc-600"> · {slot.duration_min} min</span>
-                            {slot.capacity != null && (
-                              <span className="text-zinc-600">
-                                {' '}· {slot.capacity === 1 ? 'individual' : `${slot.capacity} plazas`}
-                              </span>
-                            )}
-                          </p>
-                        </div>
+                    const actions = (
+                      <>
                         <button
                           onClick={() => setViewingBookings(slot)}
                           className="btn-icon"
@@ -329,6 +292,59 @@ function Dashboard() {
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
+                      </>
+                    );
+                    return (
+                      <motion.div
+                        key={slot.id}
+                        layout
+                        className={`card relative overflow-hidden p-3.5 ${
+                          slot.is_active ? '' : 'opacity-50'
+                        }`}
+                      >
+                        <span
+                          className="absolute inset-y-0 left-0 w-1 rounded-r-full"
+                          style={{ backgroundColor: color }}
+                          aria-hidden
+                        />
+                        <div className="flex items-center gap-3 pl-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <p className="text-sm font-semibold leading-snug text-white">
+                                {slotTitle(slot, classTypes)}
+                              </p>
+                              <span
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ring-1 ${kind.badgeClass}`}
+                              >
+                                {kind.label}
+                              </span>
+                              {!slot.is_active && (
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                                  Oculto
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-zinc-400">
+                              <span className="whitespace-nowrap">
+                                {formatTime(slot.start_time)} – {endTime(slot.start_time, slot.duration_min)}
+                              </span>
+                              <span className="whitespace-nowrap text-zinc-600">
+                                {slot.duration_min} min
+                              </span>
+                              {slot.capacity != null && (
+                                <span className="whitespace-nowrap text-zinc-600">
+                                  {slot.capacity === 1 ? 'individual' : `${slot.capacity} plazas`}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          {/* Acciones en línea a partir de sm */}
+                          <div className="hidden items-center gap-1.5 sm:flex">{actions}</div>
+                        </div>
+                        {/* Acciones en fila propia en móvil */}
+                        <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-white/[0.06] pt-2.5 pl-2 sm:hidden">
+                          {actions}
+                        </div>
                       </motion.div>
                     );
                   })
