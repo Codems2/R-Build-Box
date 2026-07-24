@@ -107,6 +107,17 @@ create policy "Solo el admin gestiona los huecos"
   with check (public.is_admin());
 
 -- ---------------------------------------------------------------------------
+-- Privilegios de los roles de la API (las políticas RLS siguen mandando:
+-- sin GRANT la API devuelve "permission denied" aunque la RLS lo permita)
+-- ---------------------------------------------------------------------------
+grant usage on schema public to anon, authenticated;
+grant select on public.class_types to anon, authenticated;
+grant select on public.schedule_slots to anon, authenticated;
+grant insert, update, delete on public.class_types to authenticated;
+grant insert, update, delete on public.schedule_slots to authenticated;
+grant select on public.profiles to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Datos de ejemplo (opcional — borra este bloque si no los quieres)
 -- ---------------------------------------------------------------------------
 insert into public.class_types (name, description, color) values
