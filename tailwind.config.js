@@ -33,6 +33,7 @@ export default {
       fontFamily: {
         display: ['Sora', 'system-ui', 'sans-serif'],
         body: ['Inter', 'system-ui', 'sans-serif'],
+        thai: ['Noto Sans Thai', 'Leelawadee UI', 'Thonburi', 'sans-serif'],
       },
       boxShadow: {
         glow: '0 0 40px -10px rgba(217, 43, 83, 0.45)',
