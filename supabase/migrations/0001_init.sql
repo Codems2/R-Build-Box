@@ -1,5 +1,5 @@
 -- ===========================================================================
--- Red Monkey · Muay Thai Box — esquema inicial
+-- Muay Thai Box — esquema inicial
 -- Ejecuta este script en el SQL Editor de tu proyecto de Supabase.
 -- ===========================================================================
 

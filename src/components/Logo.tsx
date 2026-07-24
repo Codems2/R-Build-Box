@@ -1,8 +1,9 @@
 import { useState } from 'react';
 
 /**
- * Muestra el logo real del box si existe `public/logo.png`.
- * Si no, usa un monograma SVG con la paleta de la marca como respaldo.
+ * Muestra el logo del box desde `public/logo.png`.
+ * Mientras el archivo no exista, usa una marca abstracta con la paleta
+ * de la web como respaldo (sin texto).
  */
 export default function Logo({ className = 'h-10 w-10' }: { className?: string }) {
   const [missing, setMissing] = useState(false);
@@ -11,7 +12,7 @@ export default function Logo({ className = 'h-10 w-10' }: { className?: string }
     return (
       <img
         src="/logo.png"
-        alt="Logo Red Monkey Muay Thai Box"
+        alt="Logo del box de muay thai"
         className={`${className} object-contain drop-shadow-[0_0_14px_rgba(217,43,83,0.35)]`}
         onError={() => setMissing(true)}
       />
@@ -19,7 +20,7 @@ export default function Logo({ className = 'h-10 w-10' }: { className?: string }
   }
 
   return (
-    <svg viewBox="0 0 64 64" className={className} aria-label="Red Monkey" role="img">
+    <svg viewBox="0 0 64 64" className={className} aria-label="Muay Thai Box" role="img">
       <defs>
         <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#E64D72" />
@@ -27,17 +28,14 @@ export default function Logo({ className = 'h-10 w-10' }: { className?: string }
         </linearGradient>
       </defs>
       <rect x="2" y="2" width="60" height="60" rx="18" fill="url(#logoGrad)" />
-      <text
-        x="32"
-        y="42"
-        textAnchor="middle"
-        fontFamily="Sora, sans-serif"
-        fontWeight="800"
-        fontSize="26"
-        fill="#fff"
-      >
-        RM
-      </text>
+      <path
+        d="M18 44 L32 18 L38 30 L44 22 L46 44"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="4.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

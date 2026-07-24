@@ -1,4 +1,4 @@
-# Red Monkey · Muay Thai Box 🥊
+# Muay Thai Box 🥊
 
 Web de horarios para un box de muay thai. Los usuarios consultan el horario semanal de clases y el administrador lo configura por completo: horas de inicio, duraciones, plazas y huecos especiales para **clases personales** o de **baja ocupación**.
 
@@ -39,11 +39,11 @@ Las políticas RLS garantizan que **cualquiera puede leer** el horario activo, p
 
 ## El logo
 
-Coloca el logo real en `public/logo.png` y la web lo usará automáticamente (cabecera). Si no existe, se muestra un monograma con la paleta de la marca.
+Coloca el logo en `public/logo.png` y la web lo usará automáticamente en la cabecera. Si no existe, se muestra una marca abstracta con la paleta de la web.
 
 ## Personalización
 
-- **Nombre y textos del box**: [`src/config.ts`](src/config.ts).
+- **Textos de la web**: [`src/config.ts`](src/config.ts).
 - **Paleta de colores**: [`tailwind.config.js`](tailwind.config.js) (`brand` = carmesí del logo, `accent` = teal complementario).
 - **Tipos de hueco**: `regular` (clase), `personal` (entrenamiento individual) y `low` (baja ocupación) — etiquetas y colores en [`src/lib/types.ts`](src/lib/types.ts).
 

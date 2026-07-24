@@ -19,7 +19,7 @@ export default function App() {
         </AnimatePresence>
       </main>
       <footer className="border-t border-white/5 py-6 text-center text-xs text-zinc-500">
-        © {new Date().getFullYear()} Red Monkey · Muay Thai Box
+        © {new Date().getFullYear()} · Muay Thai Box
       </footer>
     </div>
   );

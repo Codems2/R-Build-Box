@@ -2,7 +2,6 @@ import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { CalendarDays, ShieldCheck } from 'lucide-react';
 import Logo from './Logo';
-import { GYM_NAME, GYM_TAGLINE } from '../config';
 import { useAuth } from '../lib/auth';
 
 const NAV = [
@@ -17,22 +16,15 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-white/5 bg-ink-950/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Link to="/" className="group flex items-center gap-3">
+        <Link to="/" className="group flex items-center" aria-label="Inicio">
           <motion.div
             initial={{ rotate: -8, scale: 0.9, opacity: 0 }}
             animate={{ rotate: 0, scale: 1, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 200, damping: 15 }}
+            whileHover={{ scale: 1.06 }}
           >
-            <Logo className="h-10 w-10" />
+            <Logo className="h-12 w-12" />
           </motion.div>
-          <div className="leading-tight">
-            <span className="block font-display text-base font-bold tracking-tight text-white transition group-hover:text-brand-300">
-              {GYM_NAME}
-            </span>
-            <span className="block text-[11px] font-medium uppercase tracking-[0.22em] text-zinc-400">
-              {GYM_TAGLINE}
-            </span>
-          </div>
         </Link>
 
         <nav className="flex items-center gap-1 rounded-2xl border border-white/[0.06] bg-white/[0.03] p-1">
