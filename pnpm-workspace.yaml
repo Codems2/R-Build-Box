@@ -1,0 +1,4 @@
+# Única dependencia autorizada a ejecutar scripts de instalación
+# (pnpm bloquea los del resto — protección frente a ataques de cadena de suministro)
+allowBuilds:
+  esbuild: true

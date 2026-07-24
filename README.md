@@ -13,8 +13,8 @@ Vite · React 18 · TypeScript · Tailwind CSS · Framer Motion · Supabase
 ## Puesta en marcha
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 Abre http://localhost:5173. Sin configurar Supabase estarás en **modo demo**: entra en `/admin` con cualquier email y la contraseña `demo`.
@@ -33,7 +33,7 @@ Abre http://localhost:5173. Sin configurar Supabase estarás en **modo demo**: e
    ```sql
    update public.profiles set role = 'admin' where id = 'UUID-DEL-USUARIO';
    ```
-6. Reinicia `npm run dev`. El login de `/admin` ya usará Supabase y los cambios se guardarán en la base de datos.
+6. Reinicia `pnpm dev`. El login de `/admin` ya usará Supabase y los cambios se guardarán en la base de datos.
 
 Las políticas RLS garantizan que **cualquiera puede leer** el horario activo, pero **solo el admin puede modificarlo**.
 
@@ -67,7 +67,7 @@ supabase/migrations/      # Esquema SQL + RLS + datos de ejemplo
 ## Build de producción
 
 ```bash
-npm run build   # genera dist/
+pnpm build   # genera dist/
 ```
 
 Despliega `dist/` en cualquier hosting estático (Vercel, Netlify, Cloudflare Pages…). Recuerda configurar las variables `VITE_SUPABASE_*` en el hosting.
