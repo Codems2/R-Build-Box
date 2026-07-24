@@ -98,8 +98,7 @@ export default function SchedulePage() {
           transition={{ duration: 0.6, delay: 0.45 }}
           className="mt-2.5 text-xs tracking-wide text-zinc-500 sm:text-sm"
         >
-          Corazón de luchador · el arte de las ocho armas —{' '}
-          <span className="text-zinc-400">toca una clase para reservar tu plaza</span>
+          Corazón de luchador · el arte de las ocho armas
         </motion.p>
         {kindsInUse.length > 1 && (
           <motion.div
