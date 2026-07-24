@@ -85,21 +85,21 @@ export default function SchedulePage() {
       {/* Hero */}
       <section className="pb-8 pt-10 sm:pb-10 sm:pt-14">
         <motion.p
-          initial={{ opacity: 0, letterSpacing: '0.3em' }}
-          animate={{ opacity: 1, letterSpacing: '0.06em' }}
-          transition={{ duration: 0.9, ease: 'easeOut' }}
+          initial={{ opacity: 0, y: 24, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
           lang="th"
-          className="mb-2 font-thai text-lg font-semibold text-accent-400 drop-shadow-[0_0_14px_rgba(45,212,191,0.35)] sm:text-xl"
+          className="thai-shimmer mb-2 font-thai text-3xl font-semibold leading-tight sm:text-5xl"
         >
-          หัวใจนักสู้ · ศิลปะแห่งอาวุธทั้งแปด
+          หัวใจนักสู้
         </motion.p>
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.5 }}
-          className="mb-4 text-[11px] italic tracking-wide text-zinc-500"
+          transition={{ duration: 0.6, delay: 0.45 }}
+          className="mb-5 text-xs italic tracking-wide text-accent-300/80 sm:text-sm"
         >
-          «Corazón de luchador · el arte de las ocho armas»
+          «Corazón de luchador» · ศิลปะแห่งอาวุธทั้งแปด — el arte de las ocho armas
         </motion.p>
         <motion.h1
           initial={{ opacity: 0, y: 18 }}

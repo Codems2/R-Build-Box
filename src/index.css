@@ -36,6 +36,36 @@
   }
 }
 
+/* Texto tailandés del hero: degradado teal con brillo en movimiento */
+.thai-shimmer {
+  background: linear-gradient(
+    100deg,
+    #14b8a6 0%,
+    #5eead4 30%,
+    #ecfdf5 50%,
+    #5eead4 70%,
+    #14b8a6 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: thai-shimmer 4s linear infinite;
+  filter: drop-shadow(0 0 22px rgba(45, 212, 191, 0.45));
+}
+
+@keyframes thai-shimmer {
+  to {
+    background-position: 200% center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thai-shimmer {
+    animation: none;
+  }
+}
+
 /* Scrollbar fino y discreto en escritorio */
 @media (pointer: fine) {
   ::-webkit-scrollbar {
