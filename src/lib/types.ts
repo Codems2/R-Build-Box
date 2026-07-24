@@ -26,6 +26,21 @@ export interface ScheduleSlot {
 export type SlotInput = Omit<ScheduleSlot, 'id'>;
 export type ClassTypeInput = Omit<ClassType, 'id'>;
 
+export interface Booking {
+  id: string;
+  slot_id: string;
+  /** Fecha concreta de la sesión (YYYY-MM-DD) */
+  class_date: string;
+  name: string;
+  contact: string | null;
+  created_at?: string;
+}
+
+/** Clave de ocupación por sesión: `${slot_id}|${class_date}` */
+export type BookingCounts = Record<string, number>;
+
+export const countKey = (slotId: string, classDate: string) => `${slotId}|${classDate}`;
+
 export const DAY_NAMES = [
   'Lunes',
   'Martes',

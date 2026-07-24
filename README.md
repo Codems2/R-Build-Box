@@ -1,6 +1,13 @@
 # Muay Thai Box 🥊
 
-Web de horarios para un box de muay thai. Los usuarios consultan el horario semanal de clases y el administrador lo configura por completo: horas de inicio, duraciones, plazas y huecos especiales para **clases personales** o de **baja ocupación**.
+Web de horarios para un box de muay thai. Los usuarios consultan el horario semanal, **tocan una clase y reservan su plaza** (sin necesidad de registrarse), y el administrador lo configura por completo: horas de inicio, duraciones, plazas y huecos especiales para **clases personales** o de **baja ocupación**.
+
+## Reservas
+
+- Cada tarjeta muestra las plazas libres de la **próxima sesión** de esa clase.
+- Al tocar una clase, el visitante se apunta con su nombre (y teléfono opcional). El aforo se controla en la base de datos: sin overbooking ni nombres duplicados.
+- La reserva puede cancelarse desde el mismo dispositivo (se guarda un token local).
+- Los nombres de los apuntados **solo los ve el admin** (botón de apuntados en cada hueco del panel); el público solo ve la ocupación.
 
 - **Mobile-first** con soporte completo para escritorio (vista de semana completa).
 - Diseño oscuro, minimalista y profesional basado en la paleta del logo (carmesí + acento teal complementario), con animaciones de [Framer Motion](https://www.framer.com/motion/).

@@ -1,13 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CalendarX2, Loader2 } from 'lucide-react';
 import SlotCard from '../components/SlotCard';
+import BookingModal from '../components/BookingModal';
 import { useSchedule } from '../hooks/useSchedule';
+import { fetchBookingCounts } from '../lib/api';
+import { nextOccurrenceISO } from '../lib/dates';
+import { getMyBooking } from '../lib/myBookings';
 import { GYM_DESCRIPTION } from '../config';
 import {
   DAY_NAMES,
   DAY_NAMES_SHORT,
   KIND_META,
+  countKey,
+  type BookingCounts,
   type ScheduleSlot,
   type SlotKind,
 } from '../lib/types';
@@ -29,6 +35,25 @@ const item = {
 export default function SchedulePage() {
   const { slots, classTypes, loading, error } = useSchedule();
   const [day, setDay] = useState(todayIndex());
+  const [counts, setCounts] = useState<BookingCounts>({});
+  const [selected, setSelected] = useState<{ slot: ScheduleSlot; date: string } | null>(null);
+  // Fuerza el recálculo de «mis reservas» tras reservar o cancelar
+  const [, setTick] = useState(0);
+
+  const loadCounts = useCallback(() => {
+    fetchBookingCounts()
+      .then(setCounts)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadCounts();
+  }, [loadCounts]);
+
+  const handleBookingChanged = useCallback(() => {
+    loadCounts();
+    setTick((t) => t + 1);
+  }, [loadCounts]);
 
   const byDay = useMemo(() => {
     const map: ScheduleSlot[][] = Array.from({ length: 7 }, () => []);
@@ -40,6 +65,15 @@ export default function SchedulePage() {
     const set = new Set<SlotKind>(slots.map((s) => s.kind));
     return (Object.keys(KIND_META) as SlotKind[]).filter((k) => set.has(k));
   }, [slots]);
+
+  function cardProps(slot: ScheduleSlot) {
+    const date = nextOccurrenceISO(slot.day_of_week, slot.start_time);
+    return {
+      count: counts[countKey(slot.id, date)] ?? 0,
+      booked: Boolean(getMyBooking(slot.id, date)),
+      onClick: () => setSelected({ slot, date }),
+    };
+  }
 
   return (
     <motion.div
@@ -67,7 +101,7 @@ export default function SchedulePage() {
           transition={{ duration: 0.5, delay: 0.08, ease: 'easeOut' }}
           className="mt-3 max-w-2xl text-sm leading-relaxed text-zinc-400 sm:text-base"
         >
-          {GYM_DESCRIPTION}
+          {GYM_DESCRIPTION} Toca una clase para reservar tu plaza.
         </motion.p>
         {kindsInUse.length > 1 && (
           <motion.div
@@ -150,7 +184,7 @@ export default function SchedulePage() {
                 ) : (
                   byDay[day].map((slot) => (
                     <motion.div key={slot.id} variants={item}>
-                      <SlotCard slot={slot} classTypes={classTypes} />
+                      <SlotCard slot={slot} classTypes={classTypes} {...cardProps(slot)} />
                     </motion.div>
                   ))
                 )}
@@ -196,7 +230,13 @@ export default function SchedulePage() {
                       </p>
                     ) : (
                       byDay[i].map((slot) => (
-                        <SlotCard key={slot.id} slot={slot} classTypes={classTypes} compact />
+                        <SlotCard
+                          key={slot.id}
+                          slot={slot}
+                          classTypes={classTypes}
+                          compact
+                          {...cardProps(slot)}
+                        />
                       ))
                     )}
                   </div>
@@ -206,6 +246,16 @@ export default function SchedulePage() {
           </motion.div>
         </>
       )}
+
+      <BookingModal
+        open={selected !== null}
+        onClose={() => setSelected(null)}
+        slot={selected?.slot ?? null}
+        classDate={selected?.date ?? null}
+        classTypes={classTypes}
+        count={selected ? counts[countKey(selected.slot.id, selected.date)] ?? 0 : 0}
+        onChanged={handleBookingChanged}
+      />
     </motion.div>
   );
 }

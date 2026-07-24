@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Clock, Users } from 'lucide-react';
+import { CheckCircle2, Clock, Users } from 'lucide-react';
 import type { ClassType, ScheduleSlot } from '../lib/types';
 import { KIND_META, endTime, formatTime, slotColor, slotTitle } from '../lib/types';
 
@@ -8,19 +8,55 @@ interface Props {
   classTypes: ClassType[];
   /** Versión reducida para las columnas de la vista semanal de escritorio */
   compact?: boolean;
+  /** Plazas ocupadas en la próxima sesión */
+  count?: number;
+  /** El visitante ya está apuntado a la próxima sesión */
+  booked?: boolean;
+  onClick?: () => void;
 }
 
-export default function SlotCard({ slot, classTypes, compact = false }: Props) {
+function occupancyLabel(slot: ScheduleSlot, count: number | undefined) {
+  if (slot.capacity == null || count === undefined) return null;
+  const free = Math.max(0, slot.capacity - count);
+  if (free <= 0) return { text: 'Completa', full: true };
+  return { text: `${free} ${free === 1 ? 'plaza' : 'plazas'} libres`, full: false };
+}
+
+export default function SlotCard({
+  slot,
+  classTypes,
+  compact = false,
+  count,
+  booked = false,
+  onClick,
+}: Props) {
   const color = slotColor(slot, classTypes);
   const kind = KIND_META[slot.kind];
   const type = classTypes.find((t) => t.id === slot.class_type_id);
+  const occupancy = occupancyLabel(slot, count);
+
+  const interactive = onClick
+    ? {
+        role: 'button' as const,
+        tabIndex: 0,
+        onClick,
+        onKeyDown: (e: React.KeyboardEvent) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onClick();
+          }
+        },
+        whileTap: { scale: 0.985 },
+      }
+    : {};
 
   if (compact) {
     return (
       <motion.article
         layout
         whileHover={{ y: -3, transition: { duration: 0.18 } }}
-        className="card group relative overflow-hidden p-3"
+        {...interactive}
+        className={`card group relative overflow-hidden p-3 ${onClick ? 'cursor-pointer' : ''}`}
       >
         <span
           className="absolute inset-y-0 left-0 w-1 rounded-r-full"
@@ -32,17 +68,25 @@ export default function SlotCard({ slot, classTypes, compact = false }: Props) {
             <span className="font-display text-sm font-bold" style={{ color }}>
               {formatTime(slot.start_time)}
             </span>
-            {slot.kind !== 'regular' && (
-              <span className={`h-2 w-2 shrink-0 rounded-full ${kind.dotClass}`} title={kind.label} />
-            )}
+            <span className="flex items-center gap-1.5">
+              {booked && <CheckCircle2 className="h-3.5 w-3.5 text-accent-400" />}
+              {slot.kind !== 'regular' && (
+                <span className={`h-2 w-2 shrink-0 rounded-full ${kind.dotClass}`} title={kind.label} />
+              )}
+            </span>
           </div>
           <h3 className="mt-1 line-clamp-2 text-[13px] font-semibold leading-snug text-white">
             {slotTitle(slot, classTypes)}
           </h3>
           <p className="mt-1 text-[11px] text-zinc-500">
             {slot.duration_min} min
-            {slot.capacity != null && (
-              <> · {slot.capacity === 1 ? 'individual' : `${slot.capacity} plazas`}</>
+            {occupancy && (
+              <>
+                {' · '}
+                <span className={occupancy.full ? 'font-semibold text-brand-300' : 'text-zinc-400'}>
+                  {occupancy.text}
+                </span>
+              </>
             )}
           </p>
         </div>
@@ -59,7 +103,8 @@ export default function SlotCard({ slot, classTypes, compact = false }: Props) {
     <motion.article
       layout
       whileHover={{ y: -3, transition: { duration: 0.18 } }}
-      className="card group relative overflow-hidden p-4"
+      {...interactive}
+      className={`card group relative overflow-hidden p-4 ${onClick ? 'cursor-pointer' : ''}`}
     >
       <span
         className="absolute inset-y-0 left-0 w-1 rounded-r-full"
@@ -77,6 +122,11 @@ export default function SlotCard({ slot, classTypes, compact = false }: Props) {
             >
               {kind.label}
             </span>
+            {booked && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-accent-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-300 ring-1 ring-accent-500/30">
+                <CheckCircle2 className="h-3 w-3" /> Apuntado
+              </span>
+            )}
           </div>
           {(type?.description || slot.note) && (
             <p className="mt-1 line-clamp-2 text-xs text-zinc-400">
@@ -89,11 +139,20 @@ export default function SlotCard({ slot, classTypes, compact = false }: Props) {
               {formatTime(slot.start_time)} – {endTime(slot.start_time, slot.duration_min)}
               <span className="text-zinc-500">· {slot.duration_min} min</span>
             </span>
-            {slot.capacity != null && (
+            {occupancy ? (
               <span className="inline-flex items-center gap-1.5">
                 <Users className="h-3.5 w-3.5 text-zinc-500" />
-                {slot.capacity === 1 ? 'Individual' : `${slot.capacity} plazas`}
+                <span className={occupancy.full ? 'font-semibold text-brand-300' : ''}>
+                  {occupancy.text}
+                </span>
               </span>
+            ) : (
+              slot.capacity != null && (
+                <span className="inline-flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-zinc-500" />
+                  {slot.capacity === 1 ? 'Individual' : `${slot.capacity} plazas`}
+                </span>
+              )
             )}
           </div>
         </div>

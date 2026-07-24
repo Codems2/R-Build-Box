@@ -9,8 +9,10 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Users,
 } from 'lucide-react';
 import SlotForm from '../components/admin/SlotForm';
+import BookingsModal from '../components/admin/BookingsModal';
 import ClassTypeManager from '../components/admin/ClassTypeManager';
 import { useAuth } from '../lib/auth';
 import { useSchedule } from '../hooks/useSchedule';
@@ -140,6 +142,7 @@ function Dashboard() {
   const [day, setDay] = useState(0);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ScheduleSlot | null>(null);
+  const [viewingBookings, setViewingBookings] = useState<ScheduleSlot | null>(null);
 
   const daySlots = slots.filter((s) => s.day_of_week === day);
 
@@ -294,6 +297,14 @@ function Dashboard() {
                           </p>
                         </div>
                         <button
+                          onClick={() => setViewingBookings(slot)}
+                          className="btn-icon"
+                          aria-label="Ver apuntados"
+                          title="Ver apuntados"
+                        >
+                          <Users className="h-4 w-4" />
+                        </button>
+                        <button
                           onClick={() => void toggleActive(slot)}
                           className="btn-icon"
                           aria-label={slot.is_active ? 'Ocultar del horario' : 'Mostrar en el horario'}
@@ -337,6 +348,13 @@ function Dashboard() {
         classTypes={classTypes}
         editing={editing}
         defaultDay={day}
+      />
+
+      <BookingsModal
+        open={viewingBookings !== null}
+        onClose={() => setViewingBookings(null)}
+        slot={viewingBookings}
+        classTypes={classTypes}
       />
     </div>
   );
