@@ -16,6 +16,7 @@ create table if not exists public.profiles (
 
 alter table public.profiles enable row level security;
 
+drop policy if exists "Los perfiles son visibles para su dueño" on public.profiles;
 create policy "Los perfiles son visibles para su dueño"
   on public.profiles for select
   using (auth.uid() = id);
@@ -63,10 +64,12 @@ create table if not exists public.class_types (
 
 alter table public.class_types enable row level security;
 
+drop policy if exists "Cualquiera puede ver los tipos de clase" on public.class_types;
 create policy "Cualquiera puede ver los tipos de clase"
   on public.class_types for select
   using (true);
 
+drop policy if exists "Solo el admin gestiona los tipos de clase" on public.class_types;
 create policy "Solo el admin gestiona los tipos de clase"
   on public.class_types for all
   using (public.is_admin())
@@ -97,10 +100,12 @@ create index if not exists schedule_slots_day_idx
 
 alter table public.schedule_slots enable row level security;
 
+drop policy if exists "Cualquiera puede ver los huecos activos" on public.schedule_slots;
 create policy "Cualquiera puede ver los huecos activos"
   on public.schedule_slots for select
   using (is_active or public.is_admin());
 
+drop policy if exists "Solo el admin gestiona los huecos" on public.schedule_slots;
 create policy "Solo el admin gestiona los huecos"
   on public.schedule_slots for all
   using (public.is_admin())

@@ -29,10 +29,12 @@ alter table public.bookings enable row level security;
 
 -- Solo el admin puede ver y borrar reservas directamente (RLS);
 -- el público interactúa únicamente a través de las funciones de abajo.
+drop policy if exists "Solo el admin ve las reservas" on public.bookings;
 create policy "Solo el admin ve las reservas"
   on public.bookings for select
   using (public.is_admin());
 
+drop policy if exists "Solo el admin borra reservas" on public.bookings;
 create policy "Solo el admin borra reservas"
   on public.bookings for delete
   using (public.is_admin());
