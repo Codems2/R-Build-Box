@@ -10,7 +10,17 @@ La web es **privada**: hay que iniciar sesión para ver los horarios. El registr
 - El alta, el reenvío de invitación y la baja pasan por una **Edge Function** (`supabase/functions/invite-user`) que solo un admin puede usar; la clave de servicio nunca llega al navegador.
 - El admin ve el estado de cada socio (pendiente de activar / activo) en el panel.
 
-> **Emails**: el servicio de correo integrado de Supabase está pensado para pruebas y tiene límites estrictos. Para producción, configura un SMTP propio en *Authentication → Emails* (SendGrid, Resend, Postmark…).
+> **Emails**: el servicio de correo integrado de Supabase está pensado para pruebas (solo 2 emails/hora y no permite plantillas personalizadas). En producción se usa un **SMTP propio** configurado en *Authentication → Emails*.
+>
+> Configuración probada (Brevo, plan gratuito con remitente verificado — no requiere dominio):
+> - Host: `smtp-relay.brevo.com`
+> - **Puerto: `465`** (el 587/STARTTLS da problemas con el cliente SMTP de Supabase; usar 465/SSL)
+> - Usuario: el *login* SMTP que muestra Brevo (p. ej. `xxxxx001@smtp-brevo.com`)
+> - Contraseña: la *clave SMTP* de Brevo (`xsmtpsib-…`)
+> - Remitente: el email verificado en Brevo (p. ej. `rbuildbox@gmail.com`)
+> - Límite del proyecto (`rate_limit_email_sent`) subido a 30/hora.
+>
+> Las plantillas con estilos (`supabase/email-templates/`) requieren SMTP propio o plan Pro.
 
 ## Reservas
 
