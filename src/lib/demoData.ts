@@ -53,6 +53,8 @@ const slot = (
   kind,
   note: null,
   is_active: true,
+  is_recurring: true,
+  class_date: null,
   ...extra,
 });
 

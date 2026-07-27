@@ -37,6 +37,52 @@ export function shiftISO(iso: string, days: number): string {
 /** Ventana de reserva para socios: hoy y hasta 2 días en el futuro */
 export const BOOKING_WINDOW_DAYS = 2;
 
+/** Fecha ISO de hoy (hora local del navegador) */
+export function todayISO(): string {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/** Lunes (ISO) de la semana que contiene la fecha dada */
+export function mondayOfWeekISO(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  const dow = (d.getDay() + 6) % 7; // 0 = Lunes
+  d.setDate(d.getDate() - dow);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/** Las 7 fechas ISO (Lun→Dom) de la semana que empieza en `mondayISO` */
+export function weekDatesISO(mondayISO: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => shiftISO(mondayISO, i));
+}
+
+/** Día de la semana (0 = Lunes … 6 = Domingo) de una fecha ISO */
+export function dowOfISO(iso: string): number {
+  return (new Date(`${iso}T00:00:00`).getDay() + 6) % 7;
+}
+
+/** «27 jul – 2 ago» */
+export function formatWeekRange(mondayISO: string): string {
+  const a = new Date(`${mondayISO}T00:00:00`);
+  const b = new Date(`${shiftISO(mondayISO, 6)}T00:00:00`);
+  const fmt = (d: Date) =>
+    new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' }).format(d);
+  return `${fmt(a)} – ${fmt(b)}`;
+}
+
+/** «lun 27» para las cabeceras de día */
+export function formatDayShort(iso: string): { name: string; num: string } {
+  const d = new Date(`${iso}T00:00:00`);
+  return {
+    name: new Intl.DateTimeFormat('es-ES', { weekday: 'short' }).format(d).replace('.', ''),
+    num: String(d.getDate()),
+  };
+}
+
 /** «lunes, 27 de julio» */
 export function formatDateES(iso: string): string {
   return new Intl.DateTimeFormat('es-ES', {

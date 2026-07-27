@@ -22,6 +22,15 @@ La web es **privada**: hay que iniciar sesión para ver los horarios. El registr
 >
 > Las plantillas con estilos (`supabase/email-templates/`) requieren SMTP propio o plan Pro.
 
+## Calendario por semanas
+
+El horario se ve y gestiona **por semanas con fechas reales**, con un selector para navegar entre semanas (‹ / ›). Al crear una clase se elige una **fecha** (selector `date`) y se marca si **se repite cada semana**:
+
+- **Recurrente**: la clase aparece cada semana ese mismo día a partir de la fecha elegida (no hay que recrearla).
+- **Puntual**: existe solo en esa fecha (útil para seminarios o clases especiales).
+
+La resolución de qué sesiones caen en cada semana se hace en el cliente a partir de los huecos (`src/lib/schedule.ts`); `book_class` valida en la base de datos que la fecha reservada corresponde de verdad al hueco (día de la semana desde el inicio, para recurrentes; fecha exacta, para puntuales).
+
 ## Planes y créditos
 
 Las reservas funcionan con **créditos**:

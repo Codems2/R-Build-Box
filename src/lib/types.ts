@@ -21,6 +21,16 @@ export interface ScheduleSlot {
   kind: SlotKind;
   note: string | null;
   is_active: boolean;
+  /** Se repite cada semana (true) o es una clase puntual (false) */
+  is_recurring: boolean;
+  /** Fecha de la clase: puntual = ese día; recurrente = fecha de inicio */
+  class_date: string | null;
+}
+
+/** Una sesión concreta de un hueco en una fecha (lo que se muestra y reserva) */
+export interface Session {
+  slot: ScheduleSlot;
+  date: string; // ISO YYYY-MM-DD
 }
 
 export type SlotInput = Omit<ScheduleSlot, 'id'>;

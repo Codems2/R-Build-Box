@@ -1,52 +1,65 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CalendarX2, Loader2 } from 'lucide-react';
+import { CalendarX2, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import SlotCard from '../components/SlotCard';
 import BookingModal from '../components/BookingModal';
 import { useSchedule } from '../hooks/useSchedule';
 import { fetchBookingCounts, fetchMyBookings } from '../lib/api';
-import { BOOKING_WINDOW_DAYS, daysFromTodayISO, nextOccurrenceISO, shiftISO } from '../lib/dates';
+import {
+  BOOKING_WINDOW_DAYS,
+  daysFromTodayISO,
+  formatDayShort,
+  formatWeekRange,
+  mondayOfWeekISO,
+  shiftISO,
+  todayISO,
+  weekDatesISO,
+} from '../lib/dates';
+import { sessionsForWeek } from '../lib/schedule';
 import { useAuth } from '../lib/auth';
 import {
-  DAY_NAMES,
-  DAY_NAMES_SHORT,
   KIND_META,
   countKey,
   type BookingCounts,
-  type ScheduleSlot,
+  type Session,
   type SlotKind,
 } from '../lib/types';
 
-/** Índice de día con 0 = Lunes */
-function todayIndex(): number {
-  return (new Date().getDay() + 6) % 7;
-}
-
 const container = {
   hidden: {},
-  show: { transition: { staggerChildren: 0.055 } },
+  show: { transition: { staggerChildren: 0.05 } },
 };
 const item = {
   hidden: { opacity: 0, y: 16 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.32, ease: 'easeOut' } },
 };
 
 export default function SchedulePage() {
   const { slots, classTypes, loading, error } = useSchedule();
   const { refreshProfile, profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
-  const [day, setDay] = useState(todayIndex());
+
+  const thisMonday = useMemo(() => mondayOfWeekISO(todayISO()), []);
+  const [weekMonday, setWeekMonday] = useState(thisMonday);
+  const weekDates = useMemo(() => weekDatesISO(weekMonday), [weekMonday]);
+
+  // En móvil: día seleccionado dentro de la semana (fecha ISO)
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const t = todayISO();
+    return t >= weekMonday && t <= shiftISO(weekMonday, 6) ? t : weekMonday;
+  });
+  useEffect(() => {
+    const t = todayISO();
+    setSelectedDate(t >= weekMonday && t <= shiftISO(weekMonday, 6) ? t : weekMonday);
+  }, [weekMonday]);
+
   const [counts, setCounts] = useState<BookingCounts>({});
-  // Mis reservas futuras: clave `${slot_id}|${date}` → id de reserva
   const [mine, setMine] = useState<Record<string, string>>({});
-  const [selected, setSelected] = useState<{ slot: ScheduleSlot; date: string } | null>(null);
+  const [selected, setSelected] = useState<Session | null>(null);
 
   const loadCounts = useCallback(() => {
-    fetchBookingCounts()
-      .then(setCounts)
-      .catch(() => {});
+    fetchBookingCounts().then(setCounts).catch(() => {});
   }, []);
-
   const loadMine = useCallback(() => {
     fetchMyBookings()
       .then((rows) => {
@@ -56,7 +69,6 @@ export default function SchedulePage() {
       })
       .catch(() => {});
   }, []);
-
   useEffect(() => {
     loadCounts();
     loadMine();
@@ -68,21 +80,28 @@ export default function SchedulePage() {
     void refreshProfile();
   }, [loadCounts, loadMine, refreshProfile]);
 
-  const byDay = useMemo(() => {
-    const map: ScheduleSlot[][] = Array.from({ length: 7 }, () => []);
-    for (const s of slots) map[s.day_of_week]?.push(s);
+  // Sesiones de la semana agrupadas por fecha
+  const byDate = useMemo(() => {
+    const map: Record<string, Session[]> = {};
+    for (const d of weekDates) map[d] = [];
+    for (const s of sessionsForWeek(slots, weekMonday)) map[s.date]?.push(s);
+    for (const d of weekDates)
+      map[d].sort((a, b) => a.slot.start_time.localeCompare(b.slot.start_time));
     return map;
-  }, [slots]);
+  }, [slots, weekMonday, weekDates]);
 
   const kindsInUse = useMemo(() => {
     const set = new Set<SlotKind>(slots.map((s) => s.kind));
     return (Object.keys(KIND_META) as SlotKind[]).filter((k) => set.has(k));
   }, [slots]);
 
-  function cardProps(slot: ScheduleSlot) {
-    const date = nextOccurrenceISO(slot.day_of_week, slot.start_time);
+  const canGoBack = weekMonday > thisMonday || isAdmin;
+
+  function cardProps(session: Session) {
+    const { slot, date } = session;
     const booked = Boolean(mine[countKey(slot.id, date)]);
-    const locked = !isAdmin && !booked && daysFromTodayISO(date) > BOOKING_WINDOW_DAYS;
+    const daysAhead = daysFromTodayISO(date);
+    const locked = !isAdmin && !booked && (daysAhead < 0 || daysAhead > BOOKING_WINDOW_DAYS);
     const opensOn = new Date(`${shiftISO(date, -BOOKING_WINDOW_DAYS)}T00:00:00`).toLocaleDateString(
       'es-ES',
       { day: '2-digit', month: '2-digit' },
@@ -90,9 +109,12 @@ export default function SchedulePage() {
     return {
       count: counts[countKey(slot.id, date)] ?? 0,
       booked,
-      lockLabel: locked ? `Reserva desde el ${opensOn}` : undefined,
-      // Fuera de ventana: la tarjeta se muestra deshabilitada (no clicable)
-      onClick: locked ? undefined : () => setSelected({ slot, date }),
+      lockLabel: locked
+        ? daysAhead < 0
+          ? 'Finalizada'
+          : `Reserva desde el ${opensOn}`
+        : undefined,
+      onClick: locked ? undefined : () => setSelected(session),
     };
   }
 
@@ -104,44 +126,70 @@ export default function SchedulePage() {
       transition={{ duration: 0.3, ease: 'easeOut' }}
     >
       {/* Hero */}
-      <section className="pb-8 pt-10 sm:pb-10 sm:pt-14">
+      <section className="pb-6 pt-8 sm:pt-12">
         <motion.h1
-          initial={{ opacity: 0, y: 24, scale: 0.97 }}
+          initial={{ opacity: 0, y: 20, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
           lang="th"
-          className="thai-shimmer font-thai text-3xl font-semibold leading-tight sm:text-5xl"
+          className="thai-shimmer font-thai text-2xl font-semibold leading-tight sm:text-4xl"
         >
           หัวใจนักสู้ · ศิลปะแห่งอาวุธทั้งแปด
         </motion.h1>
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.45 }}
-          className="mt-2.5 text-xs tracking-wide text-zinc-500 sm:text-sm"
-        >
+        <p className="mt-2 text-xs tracking-wide text-zinc-500 sm:text-sm">
           Corazón de luchador · el arte de las ocho armas
-        </motion.p>
-        {kindsInUse.length > 1 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-xs text-zinc-400"
-          >
-            {kindsInUse.map((k) => (
-              <span key={k} className="inline-flex items-center gap-2">
-                <span className={`h-2 w-2 rounded-full ${KIND_META[k].dotClass}`} />
-                {KIND_META[k].label}
-              </span>
-            ))}
-          </motion.div>
-        )}
+        </p>
       </section>
 
-      {error && (
-        <div className="card border-brand-500/30 p-4 text-sm text-brand-200">{error}</div>
+      {/* Selector de semana */}
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.03] p-2">
+        <button
+          onClick={() => canGoBack && setWeekMonday(shiftISO(weekMonday, -7))}
+          disabled={!canGoBack}
+          className="btn-icon disabled:opacity-30"
+          aria-label="Semana anterior"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div className="text-center">
+          <p className="font-display text-sm font-bold capitalize text-white">
+            {formatWeekRange(weekMonday)}
+          </p>
+          {weekMonday !== thisMonday && (
+            <button
+              onClick={() => setWeekMonday(thisMonday)}
+              className="text-[11px] font-medium text-brand-300 hover:text-brand-200"
+            >
+              Volver a esta semana
+            </button>
+          )}
+          {weekMonday === thisMonday && (
+            <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+              Esta semana
+            </p>
+          )}
+        </div>
+        <button
+          onClick={() => setWeekMonday(shiftISO(weekMonday, 7))}
+          className="btn-icon"
+          aria-label="Semana siguiente"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      {kindsInUse.length > 1 && (
+        <div className="mb-5 flex flex-wrap gap-x-5 gap-y-2 text-xs text-zinc-400">
+          {kindsInUse.map((k) => (
+            <span key={k} className="inline-flex items-center gap-2">
+              <span className={`h-2 w-2 rounded-full ${KIND_META[k].dotClass}`} />
+              {KIND_META[k].label}
+            </span>
+          ))}
+        </div>
       )}
+
+      {error && <div className="card border-brand-500/30 p-4 text-sm text-brand-200">{error}</div>}
 
       {loading ? (
         <div className="flex items-center justify-center py-24 text-zinc-400">
@@ -149,23 +197,25 @@ export default function SchedulePage() {
         </div>
       ) : (
         <>
-          {/* Vista móvil / tablet: selector de día + lista */}
+          {/* Móvil / tablet: selector de día + lista */}
           <div className="lg:hidden">
             <div
               className="sticky top-16 z-30 -mx-4 mb-4 flex gap-1.5 overflow-x-auto bg-ink-950/85 px-4 py-3 backdrop-blur-xl [scrollbar-width:none]"
               role="tablist"
               aria-label="Día de la semana"
             >
-              {DAY_NAMES_SHORT.map((name, i) => {
-                const active = day === i;
-                const count = byDay[i].length;
+              {weekDates.map((d) => {
+                const active = selectedDate === d;
+                const isToday = d === todayISO();
+                const { name, num } = formatDayShort(d);
+                const n = byDate[d].length;
                 return (
                   <button
-                    key={name}
+                    key={d}
                     role="tab"
                     aria-selected={active}
-                    onClick={() => setDay(i)}
-                    className={`relative flex shrink-0 flex-col items-center rounded-2xl px-4 py-2 text-sm font-semibold transition ${
+                    onClick={() => setSelectedDate(d)}
+                    className={`relative flex shrink-0 flex-col items-center rounded-2xl px-3.5 py-2 text-sm font-semibold transition ${
                       active ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
                     }`}
                   >
@@ -176,13 +226,18 @@ export default function SchedulePage() {
                         transition={{ type: 'spring', stiffness: 380, damping: 32 }}
                       />
                     )}
-                    <span className="relative z-10">{name}</span>
+                    <span className="relative z-10 capitalize">{name}</span>
                     <span
-                      className={`relative z-10 text-[10px] font-medium ${
-                        active ? 'text-white/80' : 'text-zinc-500'
+                      className={`relative z-10 text-xs ${
+                        active ? 'text-white' : isToday ? 'text-brand-300' : 'text-zinc-500'
                       }`}
                     >
-                      {count === 0 ? '—' : `${count} ${count === 1 ? 'clase' : 'clases'}`}
+                      {num}
+                    </span>
+                    <span
+                      className={`relative z-10 text-[9px] ${active ? 'text-white/70' : 'text-zinc-600'}`}
+                    >
+                      {n === 0 ? '—' : n}
                     </span>
                   </button>
                 );
@@ -191,19 +246,19 @@ export default function SchedulePage() {
 
             <AnimatePresence mode="wait">
               <motion.div
-                key={day}
+                key={selectedDate}
                 variants={container}
                 initial="hidden"
                 animate="show"
                 exit={{ opacity: 0, transition: { duration: 0.12 } }}
                 className="space-y-3"
               >
-                {byDay[day].length === 0 ? (
-                  <EmptyDay dayName={DAY_NAMES[day]} />
+                {byDate[selectedDate].length === 0 ? (
+                  <EmptyDay />
                 ) : (
-                  byDay[day].map((slot) => (
-                    <motion.div key={slot.id} variants={item}>
-                      <SlotCard slot={slot} classTypes={classTypes} {...cardProps(slot)} />
+                  byDate[selectedDate].map((s) => (
+                    <motion.div key={`${s.slot.id}-${s.date}`} variants={item}>
+                      <SlotCard slot={s.slot} classTypes={classTypes} {...cardProps(s)} />
                     </motion.div>
                   ))
                 )}
@@ -211,30 +266,30 @@ export default function SchedulePage() {
             </AnimatePresence>
           </div>
 
-          {/* Vista escritorio: semana completa */}
+          {/* Escritorio: semana completa */}
           <motion.div
+            key={weekMonday}
             variants={container}
             initial="hidden"
             animate="show"
             className="hidden grid-cols-7 gap-3 lg:grid"
           >
-            {DAY_NAMES.map((name, i) => {
-              const isToday = todayIndex() === i;
+            {weekDates.map((d) => {
+              const isToday = d === todayISO();
+              const { name, num } = formatDayShort(d);
               return (
-                <motion.div key={name} variants={item} className="min-w-0">
+                <motion.div key={d} variants={item} className="min-w-0">
                   <div
                     className={`mb-3 flex items-baseline justify-between rounded-xl px-3 py-2 ${
-                      isToday
-                        ? 'bg-brand-600/15 ring-1 ring-brand-500/30'
-                        : 'bg-white/[0.03]'
+                      isToday ? 'bg-brand-600/15 ring-1 ring-brand-500/30' : 'bg-white/[0.03]'
                     }`}
                   >
                     <span
-                      className={`font-display text-sm font-bold ${
+                      className={`font-display text-sm font-bold capitalize ${
                         isToday ? 'text-brand-300' : 'text-zinc-200'
                       }`}
                     >
-                      {name}
+                      {name} {num}
                     </span>
                     {isToday && (
                       <span className="text-[10px] font-semibold uppercase tracking-wider text-brand-400">
@@ -243,18 +298,18 @@ export default function SchedulePage() {
                     )}
                   </div>
                   <div className="space-y-2.5">
-                    {byDay[i].length === 0 ? (
+                    {byDate[d].length === 0 ? (
                       <p className="rounded-xl border border-dashed border-white/10 px-3 py-6 text-center text-xs text-zinc-600">
                         Sin clases
                       </p>
                     ) : (
-                      byDay[i].map((slot) => (
+                      byDate[d].map((s) => (
                         <SlotCard
-                          key={slot.id}
-                          slot={slot}
+                          key={`${s.slot.id}-${s.date}`}
+                          slot={s.slot}
                           classTypes={classTypes}
                           compact
-                          {...cardProps(slot)}
+                          {...cardProps(s)}
                         />
                       ))
                     )}
@@ -280,17 +335,12 @@ export default function SchedulePage() {
   );
 }
 
-function EmptyDay({ dayName }: { dayName: string }) {
+function EmptyDay() {
   return (
-    <motion.div
-      variants={item}
-      className="card flex flex-col items-center gap-3 px-6 py-14 text-center"
-    >
+    <div className="card flex flex-col items-center gap-3 px-6 py-14 text-center">
       <CalendarX2 className="h-8 w-8 text-zinc-600" />
-      <p className="text-sm text-zinc-400">
-        No hay clases programadas el <span className="font-semibold text-zinc-200">{dayName}</span>.
-      </p>
+      <p className="text-sm text-zinc-400">No hay clases este día.</p>
       <p className="text-xs text-zinc-500">Día de descanso — el cuerpo también entrena recuperando.</p>
-    </motion.div>
+    </div>
   );
 }

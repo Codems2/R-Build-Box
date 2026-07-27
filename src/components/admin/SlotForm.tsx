@@ -2,7 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Repeat } from 'lucide-react';
 import Modal from '../Modal';
 import type { ClassType, ScheduleSlot, SlotInput, SlotKind } from '../../lib/types';
-import { DAY_NAMES, KIND_META } from '../../lib/types';
+import { KIND_META } from '../../lib/types';
+import { dowOfISO, todayISO } from '../../lib/dates';
 
 interface Props {
   open: boolean;
@@ -11,19 +12,22 @@ interface Props {
   classTypes: ClassType[];
   /** Hueco a editar; si es null se crea uno nuevo */
   editing: ScheduleSlot | null;
-  defaultDay: number;
+  /** Fecha por defecto (ISO) al crear un hueco nuevo */
+  defaultDate: string;
 }
 
-const EMPTY = (day: number): SlotInput => ({
+const EMPTY = (date: string): SlotInput => ({
   class_type_id: null,
   title: null,
-  day_of_week: day,
+  day_of_week: dowOfISO(date),
   start_time: '18:00',
   duration_min: 60,
   capacity: 16,
   kind: 'regular',
   note: null,
   is_active: true,
+  is_recurring: true,
+  class_date: date,
 });
 
 export default function SlotForm({
@@ -32,21 +36,30 @@ export default function SlotForm({
   onSave,
   classTypes,
   editing,
-  defaultDay,
+  defaultDate,
 }: Props) {
-  const [form, setForm] = useState<SlotInput>(EMPTY(defaultDay));
+  const [form, setForm] = useState<SlotInput>(EMPTY(defaultDate));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       setError(null);
-      setForm(editing ? { ...editing } : EMPTY(defaultDay));
+      if (editing) {
+        setForm({ ...editing, class_date: editing.class_date ?? defaultDate });
+      } else {
+        setForm(EMPTY(defaultDate));
+      }
     }
-  }, [open, editing, defaultDay]);
+  }, [open, editing, defaultDate]);
 
   const set = <K extends keyof SlotInput>(key: K, value: SlotInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  // Al cambiar la fecha, sincroniza el día de la semana
+  function setDate(date: string) {
+    setForm((f) => ({ ...f, class_date: date, day_of_week: dowOfISO(date) }));
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -54,11 +67,20 @@ export default function SlotForm({
       setError('Elige un tipo de clase o escribe un título.');
       return;
     }
+    if (!form.class_date) {
+      setError('Elige una fecha para la clase.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       await onSave(
-        { ...form, title: form.title?.trim() || null, note: form.note?.trim() || null },
+        {
+          ...form,
+          day_of_week: dowOfISO(form.class_date),
+          title: form.title?.trim() || null,
+          note: form.note?.trim() || null,
+        },
         editing?.id,
       );
       onClose();
@@ -135,24 +157,21 @@ export default function SlotForm({
           </div>
         )}
 
-        {/* Día / hora / duración */}
+        {/* Fecha / hora / duración */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label htmlFor="slot-day" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
-              Día
+            <label htmlFor="slot-date" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              Fecha {form.is_recurring && <span className="normal-case text-zinc-600">(inicio)</span>}
             </label>
-            <select
-              id="slot-day"
+            <input
+              id="slot-date"
+              type="date"
+              required
+              min={todayISO()}
               className="input"
-              value={form.day_of_week}
-              onChange={(e) => set('day_of_week', Number(e.target.value))}
-            >
-              {DAY_NAMES.map((d, i) => (
-                <option key={d} value={i}>
-                  {d}
-                </option>
-              ))}
-            </select>
+              value={form.class_date ?? ''}
+              onChange={(e) => setDate(e.target.value)}
+            />
           </div>
           <div>
             <label htmlFor="slot-start" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
@@ -202,14 +221,24 @@ export default function SlotForm({
           </div>
         </div>
 
-        {/* Aviso de recurrencia */}
-        <div className="flex items-start gap-2.5 rounded-xl border border-accent-500/20 bg-accent-500/10 p-3 text-xs leading-relaxed text-accent-300">
-          <Repeat className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            Esta clase se repite <strong>todas las semanas</strong> ese día y a esa hora. La creas
-            una vez y aparece cada semana automáticamente; los socios reservan su sesión desde 2
-            días antes.
-          </span>
+        {/* Recurrencia */}
+        <div>
+          <label className="flex cursor-pointer items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+            <span className="flex items-center gap-2 text-sm font-medium text-zinc-200">
+              <Repeat className="h-4 w-4 text-accent-400" /> Repetir cada semana
+            </span>
+            <input
+              type="checkbox"
+              checked={form.is_recurring}
+              onChange={(e) => set('is_recurring', e.target.checked)}
+              className="h-5 w-5 accent-[#2DD4BF]"
+            />
+          </label>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-500">
+            {form.is_recurring
+              ? 'La clase se repetirá cada semana ese mismo día a partir de la fecha elegida. No hace falta recrearla.'
+              : 'La clase existirá solo en la fecha elegida (clase puntual).'}
+          </p>
         </div>
 
         {/* Nota */}
