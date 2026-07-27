@@ -24,6 +24,7 @@ interface AuthContextValue {
   demoMode: boolean;
   signIn: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -34,6 +35,7 @@ const AuthContext = createContext<AuthContextValue>({
   demoMode: true,
   signIn: async () => 'No inicializado',
   signOut: async () => {},
+  resetPassword: async () => null,
 });
 
 const DEMO_KEY = 'rmbox_demo_session';
@@ -136,6 +138,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   }
 
+  async function resetPassword(email: string) {
+    if (!isSupabaseConfigured || !supabase) return null; // demo: no-op
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/set-password`,
+    });
+    if (error) return 'No se pudo enviar el email. Revisa la dirección.';
+    return null;
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -146,6 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         demoMode: !isSupabaseConfigured,
         signIn,
         signOut,
+        resetPassword,
       }}
     >
       {children}
