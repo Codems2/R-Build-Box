@@ -5,7 +5,7 @@
 import { Webhook } from 'https://esm.sh/standardwebhooks@1.0.0';
 
 const BREVO_API = 'https://api.brevo.com/v3/smtp/email';
-const SENDER = { email: 'rbuildbox@gmail.com', name: 'Muay Thai Box' };
+const SENDER = { email: 'rbuildbox@gmail.com', name: 'R-Build Box' };
 
 interface EmailData {
   token_hash: string;
@@ -27,7 +27,7 @@ function card(inner: string): string {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td align="center" style="padding-bottom:28px;">
 <div style="font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:22px;font-weight:700;letter-spacing:1px;color:#EE7794;">หัวใจนักสู้</div>
-<div style="font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;color:#8a8288;letter-spacing:1px;margin-top:6px;">MUAY THAI BOX · CORAZÓN DE LUCHADOR</div>
+<div style="font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;color:#8a8288;letter-spacing:1px;margin-top:6px;">R-BUILD BOX · CORAZÓN DE LUCHADOR</div>
 </td></tr>
 ${inner}
 </table></td></tr>
@@ -51,7 +51,7 @@ function render(type: string, firstName: string, url: string): { subject: string
   const hi = firstName ? `Hola ${firstName}, ` : '';
   if (type === 'recovery') {
     return {
-      subject: 'Restablece tu contraseña · Muay Thai Box',
+      subject: 'Restablece tu contraseña · R-Build Box',
       html: body(
         'Restablecer contraseña',
         `${hi || 'Hemos '}${firstName ? 'hemos ' : ''}recibido una solicitud para restablecer la contraseña de tu cuenta. Pulsa el botón para elegir una nueva.`,
