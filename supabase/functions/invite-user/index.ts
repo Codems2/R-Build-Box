@@ -65,11 +65,22 @@ Deno.serve(async (req) => {
         redirectTo,
       });
       if (error) {
-        const already = /registered|already/i.test(error.message);
-        return json(
-          { error: already ? 'Ya existe un socio con ese email.' : error.message },
-          already ? 409 : 400,
-        );
+        const msg = (error.message ?? '').trim();
+        if (/registered|already/i.test(msg)) {
+          return json({ error: 'Ya existe un socio con ese email.' }, 409);
+        }
+        // El proveedor SMTP puede rechazar el envío con un cuerpo vacío
+        // (p. ej. Resend en modo pruebas solo permite tu propio email).
+        if (!msg || msg === '{}') {
+          return json(
+            {
+              error:
+                'No se pudo enviar el email de invitación. Revisa la configuración de correo (SMTP) del proyecto: el proveedor puede estar rechazando el envío a direcciones externas.',
+            },
+            502,
+          );
+        }
+        return json({ error: msg }, 400);
       }
       return json({ ok: true, user_id: data.user?.id });
     }
