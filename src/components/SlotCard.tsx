@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { CheckCircle2, Clock, Users } from 'lucide-react';
+import { CheckCircle2, Clock, Lock, Users } from 'lucide-react';
 import type { ClassType, ScheduleSlot } from '../lib/types';
 import { KIND_META, endTime, formatTime, slotColor, slotTitle } from '../lib/types';
 
@@ -12,6 +12,8 @@ interface Props {
   count?: number;
   /** El visitante ya está apuntado a la próxima sesión */
   booked?: boolean;
+  /** Texto si la clase aún no es reservable (fuera de la ventana) */
+  lockLabel?: string;
   onClick?: () => void;
 }
 
@@ -28,6 +30,7 @@ export default function SlotCard({
   compact = false,
   count,
   booked = false,
+  lockLabel,
   onClick,
 }: Props) {
   const color = slotColor(slot, classTypes);
@@ -56,7 +59,10 @@ export default function SlotCard({
         layout
         whileHover={{ y: -3, transition: { duration: 0.18 } }}
         {...interactive}
-        className={`card group relative overflow-hidden p-3 ${onClick ? 'cursor-pointer' : ''}`}
+        aria-disabled={lockLabel ? true : undefined}
+        className={`card group relative overflow-hidden p-3 ${onClick ? 'cursor-pointer' : ''} ${
+          lockLabel ? 'opacity-55' : ''
+        }`}
       >
         <span
           className="absolute inset-y-0 left-0 w-1 rounded-r-full"
@@ -89,6 +95,11 @@ export default function SlotCard({
               </>
             )}
           </p>
+          {lockLabel && (
+            <p className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-zinc-500">
+              <Lock className="h-2.5 w-2.5" /> {lockLabel}
+            </p>
+          )}
         </div>
         <div
           className="pointer-events-none absolute -right-8 -top-8 h-20 w-20 rounded-full opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-25"
@@ -102,9 +113,12 @@ export default function SlotCard({
   return (
     <motion.article
       layout
-      whileHover={{ y: -3, transition: { duration: 0.18 } }}
+      whileHover={onClick ? { y: -3, transition: { duration: 0.18 } } : undefined}
       {...interactive}
-      className={`card group relative overflow-hidden p-4 ${onClick ? 'cursor-pointer' : ''}`}
+      aria-disabled={lockLabel ? true : undefined}
+      className={`card group relative overflow-hidden p-4 ${onClick ? 'cursor-pointer' : ''} ${
+        lockLabel ? 'opacity-55' : ''
+      }`}
     >
       <span
         className="absolute inset-y-0 left-0 w-1 rounded-r-full"
@@ -153,6 +167,11 @@ export default function SlotCard({
                   {slot.capacity === 1 ? 'Individual' : `${slot.capacity} plazas`}
                 </span>
               )
+            )}
+            {lockLabel && (
+              <span className="inline-flex items-center gap-1 text-zinc-500">
+                <Lock className="h-3 w-3" /> {lockLabel}
+              </span>
             )}
           </div>
         </div>

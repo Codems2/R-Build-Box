@@ -17,6 +17,26 @@ export function nextOccurrenceISO(dayOfWeek: number, startTime: string): string 
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
+/** Días de diferencia entre una fecha ISO y hoy (0 = hoy, 1 = mañana…) */
+export function daysFromTodayISO(iso: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(`${iso}T00:00:00`);
+  return Math.round((d.getTime() - today.getTime()) / 86_400_000);
+}
+
+/** Desplaza una fecha ISO un número de días */
+export function shiftISO(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/** Ventana de reserva para socios: hoy y hasta 2 días en el futuro */
+export const BOOKING_WINDOW_DAYS = 2;
+
 /** «lunes, 27 de julio» */
 export function formatDateES(iso: string): string {
   return new Intl.DateTimeFormat('es-ES', {

@@ -186,6 +186,8 @@ const BOOKING_ERROR_MESSAGES: Record<string, string> = {
   NO_CREDITS: 'No te quedan créditos esta semana.',
   NOT_AUTHENTICATED: 'Inicia sesión para reservar.',
   NOT_FOUND: 'No se encontró la reserva.',
+  TOO_FAR: 'Todavía no puedes reservar esta clase. Las reservas se abren 2 días antes.',
+  CLASS_STARTED: 'Esta clase ya ha empezado.',
 };
 
 function toBookingError(raw: string): BookingError {

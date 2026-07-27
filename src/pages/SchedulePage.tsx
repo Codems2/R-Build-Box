@@ -5,7 +5,7 @@ import SlotCard from '../components/SlotCard';
 import BookingModal from '../components/BookingModal';
 import { useSchedule } from '../hooks/useSchedule';
 import { fetchBookingCounts, fetchMyBookings } from '../lib/api';
-import { nextOccurrenceISO } from '../lib/dates';
+import { BOOKING_WINDOW_DAYS, daysFromTodayISO, nextOccurrenceISO, shiftISO } from '../lib/dates';
 import { useAuth } from '../lib/auth';
 import {
   DAY_NAMES,
@@ -33,7 +33,8 @@ const item = {
 
 export default function SchedulePage() {
   const { slots, classTypes, loading, error } = useSchedule();
-  const { refreshProfile } = useAuth();
+  const { refreshProfile, profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
   const [day, setDay] = useState(todayIndex());
   const [counts, setCounts] = useState<BookingCounts>({});
   // Mis reservas futuras: clave `${slot_id}|${date}` → id de reserva
@@ -80,10 +81,18 @@ export default function SchedulePage() {
 
   function cardProps(slot: ScheduleSlot) {
     const date = nextOccurrenceISO(slot.day_of_week, slot.start_time);
+    const booked = Boolean(mine[countKey(slot.id, date)]);
+    const locked = !isAdmin && !booked && daysFromTodayISO(date) > BOOKING_WINDOW_DAYS;
+    const opensOn = new Date(`${shiftISO(date, -BOOKING_WINDOW_DAYS)}T00:00:00`).toLocaleDateString(
+      'es-ES',
+      { day: '2-digit', month: '2-digit' },
+    );
     return {
       count: counts[countKey(slot.id, date)] ?? 0,
-      booked: Boolean(mine[countKey(slot.id, date)]),
-      onClick: () => setSelected({ slot, date }),
+      booked,
+      lockLabel: locked ? `Reserva desde el ${opensOn}` : undefined,
+      // Fuera de ventana: la tarjeta se muestra deshabilitada (no clicable)
+      onClick: locked ? undefined : () => setSelected({ slot, date }),
     };
   }
 

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import {
   AlertTriangle,
   CalendarCheck,
+  CalendarClock,
   Check,
   Clock,
   Coins,
@@ -13,7 +14,7 @@ import {
 } from 'lucide-react';
 import Modal from './Modal';
 import { BookingError, bookClass, cancelMyBooking } from '../lib/api';
-import { formatDateES } from '../lib/dates';
+import { BOOKING_WINDOW_DAYS, daysFromTodayISO, formatDateES, shiftISO } from '../lib/dates';
 import { useAuth } from '../lib/auth';
 import {
   KIND_META,
@@ -72,9 +73,15 @@ export default function BookingModal({
   const free = slot.capacity != null ? Math.max(0, slot.capacity - count) : null;
   const full = free !== null && free <= 0;
   const booked = Boolean(myBookingId);
+  const isAdmin = profile?.role === 'admin';
+  const unlimited = isAdmin; // los admins reservan siempre y sin gastar créditos
   const credits = profile?.credits ?? 0;
-  const active = profile?.membership_active ?? false;
-  const canBook = active && credits > 0 && !full;
+  const active = unlimited || (profile?.membership_active ?? false);
+  // Ventana de reserva: solo hoy y hasta 2 días (los admins la ignoran)
+  const daysAhead = daysFromTodayISO(classDate);
+  const tooFar = !unlimited && daysAhead > BOOKING_WINDOW_DAYS;
+  const opensOn = shiftISO(classDate, -BOOKING_WINDOW_DAYS);
+  const canBook = active && (unlimited || credits > 0) && !full && !tooFar;
 
   async function handleBook() {
     if (!slot || !classDate) return;
@@ -236,10 +243,16 @@ export default function BookingModal({
               <Coins className="h-4 w-4 text-amber-400" /> Tus créditos
             </span>
             <span className="font-display text-lg font-bold text-white">
-              {credits}
-              {profile?.weekly_credits ? (
-                <span className="text-xs font-medium text-zinc-500"> / {profile.weekly_credits}</span>
-              ) : null}
+              {unlimited ? (
+                <span className="text-amber-300">∞</span>
+              ) : (
+                <>
+                  {credits}
+                  {profile?.weekly_credits ? (
+                    <span className="text-xs font-medium text-zinc-500"> / {profile.weekly_credits}</span>
+                  ) : null}
+                </>
+              )}
             </span>
           </div>
 
@@ -248,6 +261,12 @@ export default function BookingModal({
               icon={<Lock className="h-4 w-4" />}
               tone="warn"
               text="Tu cuenta está inactiva. Ponte al día con el pago en el box para poder reservar."
+            />
+          ) : tooFar ? (
+            <Notice
+              icon={<CalendarClock className="h-4 w-4" />}
+              tone="warn"
+              text={`Todavía no puedes reservar esta clase. Las reservas se abren 2 días antes: a partir del ${formatDateES(opensOn)}.`}
             />
           ) : credits <= 0 ? (
             <Notice
@@ -261,6 +280,10 @@ export default function BookingModal({
               tone="warn"
               text="Esta sesión está completa. Prueba con otro horario."
             />
+          ) : unlimited ? (
+            <p className="text-center text-xs text-zinc-500">
+              Como administrador puedes reservar cualquier clase, sin gastar créditos.
+            </p>
           ) : (
             <div className="space-y-2">
               <p className="text-center text-xs text-zinc-500">
