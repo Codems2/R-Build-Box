@@ -58,6 +58,10 @@ export default function AdminSchedule() {
     return map;
   }, [slots, weekMonday, weekDates]);
 
+  // Día visible seguro (evita leer una fecha que no cae en la semana actual)
+  const activeDate = byDate[selectedDate] ? selectedDate : weekDates[0];
+  const daySessions = byDate[activeDate] ?? [];
+
   function openNew(date: string) {
     setEditing(null);
     setFormDate(date);
@@ -121,10 +125,10 @@ export default function AdminSchedule() {
       {/* Selector de día */}
       <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none]">
         {weekDates.map((d) => {
-          const active = selectedDate === d;
+          const active = activeDate === d;
           const isToday = d === todayISO();
           const { name, num } = formatDayShort(d);
-          const n = byDate[d].length;
+          const n = (byDate[d] ?? []).length;
           return (
             <button
               key={d}
@@ -154,22 +158,22 @@ export default function AdminSchedule() {
 
       <AnimatePresence mode="popLayout">
         <motion.div
-          key={selectedDate}
+          key={activeDate}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
           className="space-y-2.5"
         >
-          {byDate[selectedDate].length === 0 ? (
+          {daySessions.length === 0 ? (
             <button
-              onClick={() => openNew(selectedDate)}
+              onClick={() => openNew(activeDate)}
               className="w-full rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-zinc-500 transition hover:border-white/20 hover:text-zinc-300"
             >
               Sin clases este día. Pulsa para añadir una.
             </button>
           ) : (
-            byDate[selectedDate].map(({ slot }) => {
+            daySessions.map(({ slot }) => {
               const color = slotColor(slot, classTypes);
               const kind = KIND_META[slot.kind];
               const actions = (

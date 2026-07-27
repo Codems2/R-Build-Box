@@ -95,6 +95,12 @@ export default function SchedulePage() {
     return (Object.keys(KIND_META) as SlotKind[]).filter((k) => set.has(k));
   }, [slots]);
 
+  // Día visible: si el seleccionado no cae en la semana actual (p. ej. justo
+  // tras cambiar de semana, antes de que el efecto ajuste el estado), usa el
+  // lunes. Evita leer byDate[fecha] inexistente y que el render reviente.
+  const activeDate = byDate[selectedDate] ? selectedDate : weekDates[0];
+  const daySessions = byDate[activeDate] ?? [];
+
   const canGoBack = weekMonday > thisMonday || isAdmin;
 
   function cardProps(session: Session) {
@@ -205,10 +211,10 @@ export default function SchedulePage() {
               aria-label="Día de la semana"
             >
               {weekDates.map((d) => {
-                const active = selectedDate === d;
+                const active = activeDate === d;
                 const isToday = d === todayISO();
                 const { name, num } = formatDayShort(d);
-                const n = byDate[d].length;
+                const n = (byDate[d] ?? []).length;
                 return (
                   <button
                     key={d}
@@ -246,17 +252,17 @@ export default function SchedulePage() {
 
             <AnimatePresence mode="wait">
               <motion.div
-                key={selectedDate}
+                key={activeDate}
                 variants={container}
                 initial="hidden"
                 animate="show"
                 exit={{ opacity: 0, transition: { duration: 0.12 } }}
                 className="space-y-3"
               >
-                {byDate[selectedDate].length === 0 ? (
+                {daySessions.length === 0 ? (
                   <EmptyDay />
                 ) : (
-                  byDate[selectedDate].map((s) => (
+                  daySessions.map((s) => (
                     <motion.div key={`${s.slot.id}-${s.date}`} variants={item}>
                       <SlotCard slot={s.slot} classTypes={classTypes} {...cardProps(s)} />
                     </motion.div>

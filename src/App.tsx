@@ -2,6 +2,7 @@ import { Route, Routes, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import Header from './components/Header';
+import ErrorBoundary from './components/ErrorBoundary';
 import SchedulePage from './pages/SchedulePage';
 import AdminPage from './pages/AdminPage';
 import LoginPage from './pages/LoginPage';
@@ -39,13 +40,15 @@ export default function App() {
     <div className="flex min-h-dvh flex-col">
       <Header />
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-16 sm:px-6">
-        <AnimatePresence mode="wait">
-          <Routes location={location} key={location.pathname}>
-            <Route path="/" element={<SchedulePage />} />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path="*" element={<SchedulePage />} />
-          </Routes>
-        </AnimatePresence>
+        <ErrorBoundary key={location.pathname}>
+          <AnimatePresence mode="wait">
+            <Routes location={location} key={location.pathname}>
+              <Route path="/" element={<SchedulePage />} />
+              <Route path="/admin" element={<AdminPage />} />
+              <Route path="*" element={<SchedulePage />} />
+            </Routes>
+          </AnimatePresence>
+        </ErrorBoundary>
       </main>
       <footer className="border-t border-white/5 py-6 text-center text-xs text-zinc-500">
         © {new Date().getFullYear()} · Muay Thai Box
