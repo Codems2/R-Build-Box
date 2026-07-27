@@ -5,6 +5,7 @@ import SlotForm from '../components/admin/SlotForm';
 import BookingsModal from '../components/admin/BookingsModal';
 import ClassTypeManager from '../components/admin/ClassTypeManager';
 import MembersManager from '../components/admin/MembersManager';
+import PlansManager from '../components/admin/PlansManager';
 import { useAuth } from '../lib/auth';
 import { useSchedule } from '../hooks/useSchedule';
 import { createSlot, deleteSlot, updateSlot } from '../lib/api';
@@ -266,6 +267,8 @@ function Dashboard() {
               </motion.div>
             </AnimatePresence>
           </section>
+
+          <PlansManager />
 
           <MembersManager />
 

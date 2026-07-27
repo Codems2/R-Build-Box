@@ -3,29 +3,43 @@ import { motion } from 'framer-motion';
 import {
   BadgeCheck,
   Clock3,
+  Coins,
   Loader2,
   Mail,
   Phone,
+  Power,
   ShieldCheck,
+  SlidersHorizontal,
   Trash2,
   UserPlus,
 } from 'lucide-react';
 import Modal from '../Modal';
-import { deleteMember, fetchMembers, inviteMember, resendInvite } from '../../lib/api';
-import { memberFullName, type Member, type MemberInput } from '../../lib/types';
+import {
+  deleteMember,
+  fetchMembers,
+  fetchPlans,
+  inviteMember,
+  resendInvite,
+  updateMemberMembership,
+} from '../../lib/api';
+import { memberFullName, type Member, type MemberInput, type Plan } from '../../lib/types';
 
 const EMPTY: MemberInput = { first_name: '', last_name: '', phone: '', email: '' };
 
 export default function MembersManager() {
   const [members, setMembers] = useState<Member[] | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [managing, setManaging] = useState<Member | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       setError(null);
-      setMembers(await fetchMembers());
+      const [m, p] = await Promise.all([fetchMembers(), fetchPlans()]);
+      setMembers(m);
+      setPlans(p);
     } catch (e) {
       console.error(e);
       setError('No se pudieron cargar los socios.');
@@ -102,17 +116,13 @@ export default function MembersManager() {
                       <ShieldCheck className="h-3 w-3" /> Admin
                     </span>
                   )}
-                  {m.activated ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-accent-400">
-                      <BadgeCheck className="h-3 w-3" /> Activo
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-400">
-                      <Clock3 className="h-3 w-3" /> Pendiente
+                  {!m.activated && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                      <Clock3 className="h-3 w-3" /> Sin activar
                     </span>
                   )}
                 </div>
-                <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-zinc-500">
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-zinc-500">
                   {m.email && (
                     <span className="inline-flex items-center gap-1">
                       <Mail className="h-3 w-3" /> {m.email}
@@ -124,7 +134,34 @@ export default function MembersManager() {
                     </span>
                   )}
                 </div>
+                {m.role !== 'admin' && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    {m.membership_active ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-accent-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-300 ring-1 ring-accent-500/25">
+                        <BadgeCheck className="h-3 w-3" /> Activo
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-300 ring-1 ring-brand-500/20">
+                        Inactivo
+                      </span>
+                    )}
+                    <span className="text-[11px] text-zinc-400">{m.plan_name ?? 'Sin plan'}</span>
+                    <span className="inline-flex items-center gap-1 text-[11px] text-amber-300/90">
+                      <Coins className="h-3 w-3" /> {m.credits} créd.
+                    </span>
+                  </div>
+                )}
               </div>
+              {m.role !== 'admin' && (
+                <button
+                  onClick={() => setManaging(m)}
+                  className="btn-icon"
+                  aria-label="Gestionar membresía"
+                  title="Gestionar membresía"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                </button>
+              )}
               {!m.activated && m.email && (
                 <button
                   onClick={() => void handleResend(m)}
@@ -157,6 +194,12 @@ export default function MembersManager() {
       )}
 
       <NewMemberModal open={open} onClose={() => setOpen(false)} onDone={load} />
+      <MembershipModal
+        member={managing}
+        plans={plans}
+        onClose={() => setManaging(null)}
+        onSaved={load}
+      />
     </section>
   );
 }
@@ -297,6 +340,136 @@ function NewMemberModal({
           </div>
         </form>
       )}
+    </Modal>
+  );
+}
+
+function MembershipModal({
+  member,
+  plans,
+  onClose,
+  onSaved,
+}: {
+  member: Member | null;
+  plans: Plan[];
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [active, setActive] = useState(false);
+  const [credits, setCredits] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (member) {
+      setPlanId(member.plan_id);
+      setActive(member.membership_active);
+      setCredits(member.credits);
+      setError(null);
+    }
+  }, [member]);
+
+  if (!member) return null;
+
+  async function handleSave() {
+    if (!member) return;
+    setSaving(true);
+    setError(null);
+    try {
+      // Al activar o cambiar de plan, el trigger de la BBDD fija los créditos
+      // del plan; por eso enviamos el ajuste manual de créditos por separado.
+      const activating = active && (!member.membership_active || planId !== member.plan_id);
+      await updateMemberMembership(member.id, {
+        plan_id: planId,
+        membership_active: active,
+      });
+      if (!activating && credits !== member.credits) {
+        await updateMemberMembership(member.id, { credits });
+      }
+      await onSaved();
+      onClose();
+    } catch (err) {
+      console.error(err);
+      setError('No se pudo guardar. Inténtalo de nuevo.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={member !== null} onClose={onClose} title={`Membresía · ${memberFullName(member)}`}>
+      <div className="space-y-4">
+        {/* Activo / inactivo */}
+        <button
+          type="button"
+          onClick={() => setActive((v) => !v)}
+          className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 transition ${
+            active
+              ? 'border-accent-500/40 bg-accent-500/10'
+              : 'border-white/10 bg-white/[0.03]'
+          }`}
+        >
+          <span className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+            <Power className={`h-4 w-4 ${active ? 'text-accent-400' : 'text-zinc-500'}`} />
+            {active ? 'Socio activo' : 'Socio inactivo'}
+          </span>
+          <span className={`text-xs ${active ? 'text-accent-300' : 'text-zinc-500'}`}>
+            {active ? 'renueva créditos cada semana' : 'no se le renuevan'}
+          </span>
+        </button>
+
+        {/* Plan */}
+        <div>
+          <label htmlFor="mm-plan" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            Plan
+          </label>
+          <select
+            id="mm-plan"
+            className="input"
+            value={planId ?? ''}
+            onChange={(e) => setPlanId(e.target.value || null)}
+          >
+            <option value="">— Sin plan —</option>
+            {plans.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} · {p.weekly_credits} créd./sem
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Créditos actuales */}
+        <div>
+          <label htmlFor="mm-credits" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            Créditos actuales
+          </label>
+          <input
+            id="mm-credits"
+            type="number"
+            min={0}
+            max={100}
+            className="input"
+            value={credits}
+            onChange={(e) => setCredits(Number(e.target.value))}
+          />
+          <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-600">
+            Al activar el socio o cambiarle de plan se le fijan automáticamente los créditos del
+            plan. Usa este campo solo para ajustes manuales.
+          </p>
+        </div>
+
+        {error && <p className="text-sm text-brand-300">{error}</p>}
+
+        <div className="flex gap-2 pt-1">
+          <button type="button" onClick={onClose} className="btn-ghost flex-1">
+            Cancelar
+          </button>
+          <button type="button" onClick={() => void handleSave()} disabled={saving} className="btn-primary flex-1">
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      </div>
     </Modal>
   );
 }

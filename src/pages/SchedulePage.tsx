@@ -4,9 +4,9 @@ import { CalendarX2, Loader2 } from 'lucide-react';
 import SlotCard from '../components/SlotCard';
 import BookingModal from '../components/BookingModal';
 import { useSchedule } from '../hooks/useSchedule';
-import { fetchBookingCounts } from '../lib/api';
+import { fetchBookingCounts, fetchMyBookings } from '../lib/api';
 import { nextOccurrenceISO } from '../lib/dates';
-import { getMyBooking } from '../lib/myBookings';
+import { useAuth } from '../lib/auth';
 import {
   DAY_NAMES,
   DAY_NAMES_SHORT,
@@ -33,11 +33,12 @@ const item = {
 
 export default function SchedulePage() {
   const { slots, classTypes, loading, error } = useSchedule();
+  const { refreshProfile } = useAuth();
   const [day, setDay] = useState(todayIndex());
   const [counts, setCounts] = useState<BookingCounts>({});
+  // Mis reservas futuras: clave `${slot_id}|${date}` → id de reserva
+  const [mine, setMine] = useState<Record<string, string>>({});
   const [selected, setSelected] = useState<{ slot: ScheduleSlot; date: string } | null>(null);
-  // Fuerza el recálculo de «mis reservas» tras reservar o cancelar
-  const [, setTick] = useState(0);
 
   const loadCounts = useCallback(() => {
     fetchBookingCounts()
@@ -45,14 +46,26 @@ export default function SchedulePage() {
       .catch(() => {});
   }, []);
 
+  const loadMine = useCallback(() => {
+    fetchMyBookings()
+      .then((rows) => {
+        const map: Record<string, string> = {};
+        for (const r of rows) map[countKey(r.slot_id, r.class_date)] = r.id;
+        setMine(map);
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     loadCounts();
-  }, [loadCounts]);
+    loadMine();
+  }, [loadCounts, loadMine]);
 
   const handleBookingChanged = useCallback(() => {
     loadCounts();
-    setTick((t) => t + 1);
-  }, [loadCounts]);
+    loadMine();
+    void refreshProfile();
+  }, [loadCounts, loadMine, refreshProfile]);
 
   const byDay = useMemo(() => {
     const map: ScheduleSlot[][] = Array.from({ length: 7 }, () => []);
@@ -69,7 +82,7 @@ export default function SchedulePage() {
     const date = nextOccurrenceISO(slot.day_of_week, slot.start_time);
     return {
       count: counts[countKey(slot.id, date)] ?? 0,
-      booked: Boolean(getMyBooking(slot.id, date)),
+      booked: Boolean(mine[countKey(slot.id, date)]),
       onClick: () => setSelected({ slot, date }),
     };
   }
@@ -251,6 +264,7 @@ export default function SchedulePage() {
         classDate={selected?.date ?? null}
         classTypes={classTypes}
         count={selected ? counts[countKey(selected.slot.id, selected.date)] ?? 0 : 0}
+        myBookingId={selected ? mine[countKey(selected.slot.id, selected.date)] ?? null : null}
         onChanged={handleBookingChanged}
       />
     </motion.div>

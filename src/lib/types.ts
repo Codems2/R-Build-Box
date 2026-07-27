@@ -26,6 +26,16 @@ export interface ScheduleSlot {
 export type SlotInput = Omit<ScheduleSlot, 'id'>;
 export type ClassTypeInput = Omit<ClassType, 'id'>;
 
+export interface Plan {
+  id: string;
+  name: string;
+  weekly_credits: number;
+  price: number | null;
+  description: string | null;
+}
+
+export type PlanInput = Omit<Plan, 'id'>;
+
 export interface Member {
   id: string;
   member_no: number;
@@ -35,7 +45,18 @@ export interface Member {
   last_name: string | null;
   phone: string | null;
   activated: boolean;
+  plan_id: string | null;
+  plan_name: string | null;
+  membership_active: boolean;
+  credits: number;
   created_at?: string;
+}
+
+/** Reserva propia del socio (para marcar y cancelar en el calendario) */
+export interface MyBookingRow {
+  id: string;
+  slot_id: string;
+  class_date: string;
 }
 
 export interface MemberInput {

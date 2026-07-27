@@ -22,6 +22,19 @@ La web es **privada**: hay que iniciar sesión para ver los horarios. El registr
 >
 > Las plantillas con estilos (`supabase/email-templates/`) requieren SMTP propio o plan Pro.
 
+## Planes y créditos
+
+Las reservas funcionan con **créditos**:
+
+- El admin crea **planes** (nombre, créditos semanales, precio) desde su panel.
+- A cada socio se le asigna un plan y un estado **activo/inactivo**:
+  - **Activo** → cada lunes recupera los créditos de su plan (renovación automática con `pg_cron`, migración 0005).
+  - **Inactivo** → no se le renuevan hasta que el admin lo reactive (tras el pago); al reactivar recibe sus créditos al instante.
+- **Reservar** una clase gasta 1 crédito y queda vinculada al socio (`book_class`). **Cancelar** antes de la clase lo devuelve (`cancel_my_booking`).
+- Un socio inactivo o sin créditos no puede reservar (con aviso claro en la web).
+
+Toda la lógica de créditos/aforo vive en la base de datos (funciones `security definer` con bloqueo por sesión), así que no hay forma de saltársela desde el cliente.
+
 ## Reservas
 
 - Cada tarjeta muestra las plazas libres de la **próxima sesión** de esa clase.

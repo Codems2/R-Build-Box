@@ -7,6 +7,9 @@ import type {
   ClassTypeInput,
   Member,
   MemberInput,
+  MyBookingRow,
+  Plan,
+  PlanInput,
   ScheduleSlot,
   SlotInput,
 } from './types';
@@ -168,17 +171,21 @@ export async function deleteSlot(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Reservas de plazas
+// Reservas por créditos (vinculadas al socio)
 // ---------------------------------------------------------------------------
 
 export class BookingError extends Error {}
 
 const BOOKING_ERROR_MESSAGES: Record<string, string> = {
   CLASS_FULL: 'La clase está completa: no quedan plazas.',
-  ALREADY_BOOKED: 'Ya hay una reserva a ese nombre para esta sesión.',
+  ALREADY_BOOKED: 'Ya tienes una reserva para esta sesión.',
   DATE_IN_PAST: 'Esa sesión ya ha pasado.',
   DATE_MISMATCH: 'La fecha no corresponde a esta clase.',
   SLOT_NOT_FOUND: 'Esta clase ya no está disponible.',
+  MEMBERSHIP_INACTIVE: 'Tu cuenta está inactiva. Ponte al día con el pago para reservar.',
+  NO_CREDITS: 'No te quedan créditos esta semana.',
+  NOT_AUTHENTICATED: 'Inicia sesión para reservar.',
+  NOT_FOUND: 'No se encontró la reserva.',
 };
 
 function toBookingError(raw: string): BookingError {
@@ -207,49 +214,59 @@ export async function fetchBookingCounts(): Promise<BookingCounts> {
   return counts;
 }
 
-export async function createBooking(
-  slot: ScheduleSlot,
-  classDate: string,
-  name: string,
-  contact: string,
-): Promise<{ id: string; cancel_token: string }> {
+/** Reservas futuras del socio que ha iniciado sesión */
+export async function fetchMyBookings(): Promise<MyBookingRow[]> {
+  const today = new Date();
+  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase.rpc('create_booking', {
-      p_slot_id: slot.id,
-      p_class_date: classDate,
-      p_name: name,
-      p_contact: contact || null,
-    });
-    if (error) throw toBookingError(error.message);
-    return data as { id: string; cancel_token: string };
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData.user?.id;
+    if (!uid) return [];
+    const { data, error } = await supabase
+      .from('bookings')
+      .select('id, slot_id, class_date')
+      .eq('user_id', uid)
+      .gte('class_date', iso);
+    if (error) throw error;
+    return data as MyBookingRow[];
   }
-  const bookings = readLS<Booking[]>(LS_BOOKINGS, []);
-  const sameSession = bookings.filter(
-    (b) => b.slot_id === slot.id && b.class_date === classDate,
-  );
-  if (slot.capacity != null && sameSession.length >= slot.capacity) {
-    throw new BookingError(BOOKING_ERROR_MESSAGES.CLASS_FULL);
-  }
-  if (sameSession.some((b) => b.name.trim().toLowerCase() === name.trim().toLowerCase())) {
-    throw new BookingError(BOOKING_ERROR_MESSAGES.ALREADY_BOOKED);
-  }
-  const id = newId();
-  writeLS(LS_BOOKINGS, [
-    ...bookings,
-    { id, slot_id: slot.id, class_date: classDate, name: name.trim(), contact: contact || null },
-  ]);
-  return { id, cancel_token: id };
+  return readLS<Booking[]>(LS_BOOKINGS, [])
+    .filter((b) => b.class_date >= iso)
+    .map((b) => ({ id: b.id, slot_id: b.slot_id, class_date: b.class_date }));
 }
 
-export async function cancelBooking(id: string, token: string): Promise<void> {
+/** Reserva una clase gastando 1 crédito. Devuelve los créditos restantes. */
+export async function bookClass(slotId: string, classDate: string): Promise<number> {
   if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.rpc('cancel_booking', { p_id: id, p_token: token });
-    if (error) throw error;
+    const { data, error } = await supabase.rpc('book_class', {
+      p_slot_id: slotId,
+      p_class_date: classDate,
+    });
+    if (error) throw toBookingError(error.message);
+    return (data as { credits_left: number }).credits_left;
+  }
+  // Demo: reserva local sin control real de créditos
+  const bookings = readLS<Booking[]>(LS_BOOKINGS, []);
+  if (bookings.some((b) => b.slot_id === slotId && b.class_date === classDate)) {
+    throw new BookingError(BOOKING_ERROR_MESSAGES.ALREADY_BOOKED);
+  }
+  writeLS(LS_BOOKINGS, [
+    ...bookings,
+    { id: newId(), slot_id: slotId, class_date: classDate, name: 'Socio Demo', contact: null },
+  ]);
+  return 0;
+}
+
+/** Cancela una reserva propia (devuelve el crédito si la clase no ha pasado). */
+export async function cancelMyBooking(bookingId: string): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.rpc('cancel_my_booking', { p_booking_id: bookingId });
+    if (error) throw toBookingError(error.message);
     return;
   }
   writeLS(
     LS_BOOKINGS,
-    readLS<Booking[]>(LS_BOOKINGS, []).filter((b) => b.id !== id),
+    readLS<Booking[]>(LS_BOOKINGS, []).filter((b) => b.id !== bookingId),
   );
 }
 
@@ -358,6 +375,82 @@ export async function deleteMember(userId: string): Promise<void> {
   writeLS(
     LS_MEMBERS,
     readLS<Member[]>(LS_MEMBERS, []).filter((m) => m.id !== userId),
+  );
+}
+
+/** Solo admin: cambiar plan / estado / créditos de un socio */
+export async function updateMemberMembership(
+  memberId: string,
+  patch: { plan_id?: string | null; membership_active?: boolean; credits?: number },
+): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from('profiles').update(patch).eq('id', memberId);
+    if (error) throw error;
+    return;
+  }
+  writeLS(
+    LS_MEMBERS,
+    readLS<Member[]>(LS_MEMBERS, []).map((m) =>
+      m.id === memberId ? { ...m, ...patch } : m,
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Planes (solo admin gestiona; los socios los leen)
+// ---------------------------------------------------------------------------
+
+const DEMO_PLANS: Plan[] = [
+  { id: 'p-basic', name: 'Básico', weekly_credits: 2, price: 29.9, description: '2 clases/semana' },
+  { id: 'p-pro', name: 'Pro', weekly_credits: 4, price: 44.9, description: '4 clases/semana' },
+  { id: 'p-full', name: 'Ilimitado', weekly_credits: 7, price: 59.9, description: 'Cada día' },
+];
+
+export async function fetchPlans(): Promise<Plan[]> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase
+      .from('plans')
+      .select('*')
+      .order('weekly_credits');
+    if (error) throw error;
+    return data as Plan[];
+  }
+  return readLS<Plan[]>('rmbox_plans_v1', DEMO_PLANS);
+}
+
+export async function createPlan(input: PlanInput): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from('plans').insert(input);
+    if (error) throw error;
+    return;
+  }
+  writeLS('rmbox_plans_v1', [
+    ...readLS<Plan[]>('rmbox_plans_v1', DEMO_PLANS),
+    { ...input, id: newId() },
+  ]);
+}
+
+export async function updatePlan(id: string, input: PlanInput): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from('plans').update(input).eq('id', id);
+    if (error) throw error;
+    return;
+  }
+  writeLS(
+    'rmbox_plans_v1',
+    readLS<Plan[]>('rmbox_plans_v1', DEMO_PLANS).map((p) => (p.id === id ? { ...p, ...input } : p)),
+  );
+}
+
+export async function deletePlan(id: string): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from('plans').delete().eq('id', id);
+    if (error) throw error;
+    return;
+  }
+  writeLS(
+    'rmbox_plans_v1',
+    readLS<Plan[]>('rmbox_plans_v1', DEMO_PLANS).filter((p) => p.id !== id),
   );
 }
 

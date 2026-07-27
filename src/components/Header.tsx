@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { LogOut, ShieldCheck } from 'lucide-react';
+import { Coins, LogOut, ShieldCheck } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '../lib/auth';
 import { memberFullName } from '../lib/types';
@@ -10,6 +10,7 @@ export default function Header() {
   const { isAdmin, profile, signOut } = useAuth();
 
   const firstName = profile?.first_name || memberFullName(profile ?? { first_name: null, last_name: null });
+  const showCredits = Boolean(profile && !isAdmin && profile.membership_active);
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/5 bg-ink-950/80 backdrop-blur-xl">
@@ -43,6 +44,18 @@ export default function Header() {
             >
               Horarios
             </Link>
+          )}
+          {showCredits && (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-300"
+              title="Créditos disponibles esta semana"
+            >
+              <Coins className="h-4 w-4" />
+              {profile!.credits}
+              {profile!.weekly_credits ? (
+                <span className="text-xs font-medium text-amber-400/70">/{profile!.weekly_credits}</span>
+              ) : null}
+            </span>
           )}
           <span className="hidden text-sm text-zinc-400 sm:inline">
             Hola, <span className="font-medium text-zinc-200">{firstName}</span>
