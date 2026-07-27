@@ -26,6 +26,34 @@ export interface ScheduleSlot {
 export type SlotInput = Omit<ScheduleSlot, 'id'>;
 export type ClassTypeInput = Omit<ClassType, 'id'>;
 
+export interface Member {
+  id: string;
+  member_no: number;
+  role: 'user' | 'admin';
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  activated: boolean;
+  created_at?: string;
+}
+
+export interface MemberInput {
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+}
+
+export function memberFullName(m: {
+  first_name: string | null;
+  last_name: string | null;
+  email?: string | null;
+}): string {
+  const name = [m.first_name, m.last_name].filter(Boolean).join(' ').trim();
+  return name || m.email || 'Socio';
+}
+
 export interface Booking {
   id: string;
   slot_id: string;

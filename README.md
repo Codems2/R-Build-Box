@@ -2,6 +2,16 @@
 
 Web de horarios para un box de muay thai. Los usuarios consultan el horario semanal, **tocan una clase y reservan su plaza** (sin necesidad de registrarse), y el administrador lo configura por completo: horas de inicio, duraciones, plazas y huecos especiales para **clases personales** o de **baja ocupación**.
 
+## Socios y acceso privado
+
+La web es **privada**: hay que iniciar sesión para ver los horarios. El registro no es libre — **el admin da de alta a cada socio** desde su panel (nombre, apellidos, teléfono y email) y Supabase le envía un email de invitación para que **cree su contraseña** (`/set-password`).
+
+- Cada socio tiene un **número autonumérico irrepetible** (`member_no`) además de su id interno de Supabase Auth.
+- El alta, el reenvío de invitación y la baja pasan por una **Edge Function** (`supabase/functions/invite-user`) que solo un admin puede usar; la clave de servicio nunca llega al navegador.
+- El admin ve el estado de cada socio (pendiente de activar / activo) en el panel.
+
+> **Emails**: el servicio de correo integrado de Supabase está pensado para pruebas y tiene límites estrictos. Para producción, configura un SMTP propio en *Authentication → Emails* (SendGrid, Resend, Postmark…).
+
 ## Reservas
 
 - Cada tarjeta muestra las plazas libres de la **próxima sesión** de esa clase.

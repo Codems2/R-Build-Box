@@ -5,10 +5,12 @@ import Modal from './Modal';
 import { BookingError, cancelBooking, createBooking } from '../lib/api';
 import { formatDateES } from '../lib/dates';
 import { forgetBooking, getMyBooking, rememberBooking, type MyBooking } from '../lib/myBookings';
+import { useAuth } from '../lib/auth';
 import {
   KIND_META,
   endTime,
   formatTime,
+  memberFullName,
   slotColor,
   slotTitle,
   type ClassType,
@@ -38,6 +40,7 @@ export default function BookingModal({
   count,
   onChanged,
 }: Props) {
+  const { profile } = useAuth();
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
   const [phase, setPhase] = useState<Phase>('form');
@@ -49,11 +52,13 @@ export default function BookingModal({
     if (open && slot && classDate) {
       setPhase('form');
       setError(null);
-      setContact('');
+      // Prellena con los datos del socio que ha iniciado sesión
+      setName(profile ? memberFullName(profile) : '');
+      setContact(profile?.phone ?? '');
       setCancelling(false);
       setMine(getMyBooking(slot.id, classDate));
     }
-  }, [open, slot, classDate]);
+  }, [open, slot, classDate, profile]);
 
   if (!slot || !classDate) return null;
 

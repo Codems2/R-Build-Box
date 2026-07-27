@@ -1,12 +1,15 @@
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ShieldCheck } from 'lucide-react';
+import { LogOut, ShieldCheck } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '../lib/auth';
+import { memberFullName } from '../lib/types';
 
 export default function Header() {
   const { pathname } = useLocation();
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile, signOut } = useAuth();
+
+  const firstName = profile?.first_name || memberFullName(profile ?? { first_name: null, last_name: null });
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/5 bg-ink-950/80 backdrop-blur-xl">
@@ -22,18 +25,37 @@ export default function Header() {
           </motion.div>
         </Link>
 
-        {/* Acceso al panel solo visible con la sesión de admin iniciada.
-            La ruta /admin sigue existiendo, pero se llega escribiendo la URL. */}
-        {isAdmin && !pathname.startsWith('/admin') && (
-          <Link
-            to="/admin"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2 text-sm font-medium text-zinc-300 transition hover:bg-white/[0.07] hover:text-white"
+        <div className="flex items-center gap-2">
+          {isAdmin && !pathname.startsWith('/admin') && (
+            <Link
+              to="/admin"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2 text-sm font-medium text-zinc-300 transition hover:bg-white/[0.07] hover:text-white"
+            >
+              <ShieldCheck className="h-4 w-4" />
+              <span className="hidden sm:inline">Panel admin</span>
+              <span className="h-1.5 w-1.5 rounded-full bg-accent-400" />
+            </Link>
+          )}
+          {isAdmin && pathname.startsWith('/admin') && (
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2 text-sm font-medium text-zinc-300 transition hover:bg-white/[0.07] hover:text-white"
+            >
+              Horarios
+            </Link>
+          )}
+          <span className="hidden text-sm text-zinc-400 sm:inline">
+            Hola, <span className="font-medium text-zinc-200">{firstName}</span>
+          </span>
+          <button
+            onClick={() => void signOut()}
+            className="btn-icon"
+            aria-label="Cerrar sesión"
+            title="Cerrar sesión"
           >
-            <ShieldCheck className="h-4 w-4" />
-            Panel admin
-            <span className="h-1.5 w-1.5 rounded-full bg-accent-400" />
-          </Link>
-        )}
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </header>
   );

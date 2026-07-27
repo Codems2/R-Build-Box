@@ -5,6 +5,8 @@ import type {
   BookingCounts,
   ClassType,
   ClassTypeInput,
+  Member,
+  MemberInput,
   ScheduleSlot,
   SlotInput,
 } from './types';
@@ -13,6 +15,7 @@ import { countKey } from './types';
 const LS_SLOTS = 'rmbox_slots_v1';
 const LS_TYPES = 'rmbox_class_types_v1';
 const LS_BOOKINGS = 'rmbox_bookings_v1';
+const LS_MEMBERS = 'rmbox_members_v1';
 
 function readLS<T>(key: string, fallback: T): T {
   try {
@@ -281,4 +284,93 @@ export async function deleteBooking(id: string): Promise<void> {
     LS_BOOKINGS,
     readLS<Booking[]>(LS_BOOKINGS, []).filter((b) => b.id !== id),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Socios (solo admin)
+// ---------------------------------------------------------------------------
+
+const setPasswordUrl = () => `${window.location.origin}/set-password`;
+
+export async function fetchMembers(): Promise<Member[]> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.rpc('list_members');
+    if (error) throw error;
+    return data as Member[];
+  }
+  return readLS<Member[]>(LS_MEMBERS, []);
+}
+
+export async function inviteMember(input: MemberInput): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.functions.invoke('invite-user', {
+      body: {
+        action: 'invite',
+        email: input.email.trim().toLowerCase(),
+        first_name: input.first_name.trim(),
+        last_name: input.last_name.trim(),
+        phone: input.phone.trim() || null,
+        redirectTo: setPasswordUrl(),
+      },
+    });
+    if (error) throw new Error(await readInvokeError(error, 'No se pudo enviar la invitación.'));
+    if (data?.error) throw new Error(data.error);
+    return;
+  }
+  // Demo: alta local sin email
+  const members = readLS<Member[]>(LS_MEMBERS, []);
+  const nextNo = members.reduce((m, x) => Math.max(m, x.member_no), 1) + 1;
+  writeLS(LS_MEMBERS, [
+    ...members,
+    {
+      id: newId(),
+      member_no: nextNo,
+      role: 'user',
+      email: input.email.trim().toLowerCase(),
+      first_name: input.first_name.trim(),
+      last_name: input.last_name.trim(),
+      phone: input.phone.trim() || null,
+      activated: false,
+    },
+  ]);
+}
+
+export async function resendInvite(email: string): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.functions.invoke('invite-user', {
+      body: { action: 'resend', email, redirectTo: setPasswordUrl() },
+    });
+    if (error) throw new Error(await readInvokeError(error, 'No se pudo reenviar la invitación.'));
+    if (data?.error) throw new Error(data.error);
+    return;
+  }
+}
+
+export async function deleteMember(userId: string): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.functions.invoke('invite-user', {
+      body: { action: 'delete', user_id: userId },
+    });
+    if (error) throw new Error(await readInvokeError(error, 'No se pudo eliminar el socio.'));
+    if (data?.error) throw new Error(data.error);
+    return;
+  }
+  writeLS(
+    LS_MEMBERS,
+    readLS<Member[]>(LS_MEMBERS, []).filter((m) => m.id !== userId),
+  );
+}
+
+/** Extrae el mensaje de error del cuerpo JSON de una Edge Function */
+async function readInvokeError(error: unknown, fallback: string): Promise<string> {
+  const ctx = (error as { context?: Response })?.context;
+  if (ctx && typeof ctx.json === 'function') {
+    try {
+      const body = await ctx.json();
+      if (body?.error) return body.error as string;
+    } catch {
+      /* ignore */
+    }
+  }
+  return error instanceof Error ? error.message : fallback;
 }

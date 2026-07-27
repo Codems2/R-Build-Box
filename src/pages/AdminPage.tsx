@@ -1,19 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import {
-  Eye,
-  EyeOff,
-  Info,
-  Loader2,
-  LogOut,
-  Pencil,
-  Plus,
-  Trash2,
-  Users,
-} from 'lucide-react';
+import { Eye, EyeOff, Loader2, Lock, Pencil, Plus, Trash2, Users } from 'lucide-react';
 import SlotForm from '../components/admin/SlotForm';
 import BookingsModal from '../components/admin/BookingsModal';
 import ClassTypeManager from '../components/admin/ClassTypeManager';
+import MembersManager from '../components/admin/MembersManager';
 import { useAuth } from '../lib/auth';
 import { useSchedule } from '../hooks/useSchedule';
 import { createSlot, deleteSlot, updateSlot } from '../lib/api';
@@ -46,90 +37,22 @@ export default function AdminPage() {
       ) : isAdmin ? (
         <Dashboard />
       ) : (
-        <LoginForm />
+        <NotAuthorized />
       )}
     </motion.div>
   );
 }
 
-// ---------------------------------------------------------------------------
-
-function LoginForm() {
-  const { signIn, demoMode } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    const err = await signIn(email, password);
-    if (err) setError(err);
-    setSubmitting(false);
-  }
-
+function NotAuthorized() {
   return (
-    <div className="mx-auto max-w-sm pt-16 sm:pt-24">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: 'easeOut' }}
-        className="card p-6"
-      >
-        <h1 className="font-display text-xl font-bold text-white">Zona de administración</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          Accede para configurar los horarios del box.
+    <div className="mx-auto max-w-sm pt-20 text-center sm:pt-28">
+      <div className="card flex flex-col items-center gap-3 p-8">
+        <Lock className="h-8 w-8 text-zinc-600" />
+        <h1 className="font-display text-lg font-bold text-white">Acceso restringido</h1>
+        <p className="text-sm text-zinc-400">
+          Esta zona es solo para administradores del box.
         </p>
-
-        {demoMode && (
-          <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-accent-500/20 bg-accent-500/10 p-3 text-xs leading-relaxed text-accent-300">
-            <Info className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>
-              <strong>Modo demo</strong> (Supabase sin configurar): entra con cualquier email y la
-              contraseña <code className="rounded bg-black/30 px-1">demo</code>. Los cambios se
-              guardan solo en este navegador.
-            </span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="mt-5 space-y-3">
-          <input
-            type="email"
-            required
-            autoComplete="email"
-            className="input"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <div className="relative">
-            <input
-              type={showPassword ? 'text' : 'password'}
-              required
-              autoComplete="current-password"
-              className="input pr-11"
-              placeholder="Contraseña"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 transition hover:text-zinc-300"
-              aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          </div>
-          {error && <p className="text-sm text-brand-300">{error}</p>}
-          <button type="submit" disabled={submitting} className="btn-primary w-full">
-            {submitting ? 'Entrando…' : 'Entrar'}
-          </button>
-        </form>
-      </motion.div>
+      </div>
     </div>
   );
 }
@@ -137,7 +60,7 @@ function LoginForm() {
 // ---------------------------------------------------------------------------
 
 function Dashboard() {
-  const { signOut, demoMode } = useAuth();
+  const { demoMode } = useAuth();
   const { slots, classTypes, loading, reload } = useSchedule(true);
   const [day, setDay] = useState(0);
   const [formOpen, setFormOpen] = useState(false);
@@ -171,21 +94,14 @@ function Dashboard() {
 
   return (
     <div className="pt-8 sm:pt-12">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
-            Panel de administración
-          </h1>
-          <p className="mt-1 text-sm text-zinc-400">
-            Configura clases, horas de inicio, duraciones y huecos especiales.
-            {demoMode && (
-              <span className="ml-1 text-accent-400">Modo demo: cambios locales.</span>
-            )}
-          </p>
-        </div>
-        <button onClick={() => void signOut()} className="btn-ghost text-xs">
-          <LogOut className="h-4 w-4" /> Salir
-        </button>
+      <div className="mb-6">
+        <h1 className="font-display text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
+          Panel de administración
+        </h1>
+        <p className="mt-1 text-sm text-zinc-400">
+          Configura clases, horarios y gestiona a los socios del box.
+          {demoMode && <span className="ml-1 text-accent-400">Modo demo: cambios locales.</span>}
+        </p>
       </div>
 
       {loading ? (
@@ -338,10 +254,8 @@ function Dashboard() {
                               )}
                             </p>
                           </div>
-                          {/* Acciones en línea a partir de sm */}
                           <div className="hidden items-center gap-1.5 sm:flex">{actions}</div>
                         </div>
-                        {/* Acciones en fila propia en móvil */}
                         <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-white/[0.06] pt-2.5 pl-2 sm:hidden">
                           {actions}
                         </div>
@@ -352,6 +266,8 @@ function Dashboard() {
               </motion.div>
             </AnimatePresence>
           </section>
+
+          <MembersManager />
 
           <ClassTypeManager classTypes={classTypes} onChanged={reload} />
         </div>
