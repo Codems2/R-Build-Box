@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { CalendarCheck, Check, Clock, Coins, Lock, Ticket, Users } from 'lucide-react';
+import {
+  AlertTriangle,
+  CalendarCheck,
+  Check,
+  Clock,
+  Coins,
+  Lock,
+  Ticket,
+  Users,
+  X,
+} from 'lucide-react';
 import Modal from './Modal';
 import { BookingError, bookClass, cancelMyBooking } from '../lib/api';
 import { formatDateES } from '../lib/dates';
@@ -28,7 +38,7 @@ interface Props {
   onChanged: () => void;
 }
 
-type Phase = 'idle' | 'saving' | 'done';
+type Phase = 'idle' | 'saving' | 'done' | 'cancelled';
 
 export default function BookingModal({
   open,
@@ -44,12 +54,14 @@ export default function BookingModal({
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [justBooked, setJustBooked] = useState(false);
+  const [refunded, setRefunded] = useState(false);
 
   useEffect(() => {
     if (open) {
       setPhase('idle');
       setError(null);
       setJustBooked(false);
+      setRefunded(false);
     }
   }, [open, slot, classDate]);
 
@@ -85,9 +97,10 @@ export default function BookingModal({
     setPhase('saving');
     setError(null);
     try {
-      await cancelMyBooking(myBookingId);
+      const wasRefunded = await cancelMyBooking(myBookingId);
+      setRefunded(wasRefunded);
+      setPhase('cancelled');
       onChanged();
-      onClose();
     } catch (err) {
       setPhase('idle');
       setError(err instanceof BookingError ? err.message : 'No se pudo cancelar.');
@@ -148,7 +161,32 @@ export default function BookingModal({
         </div>
       </div>
 
-      {booked ? (
+      {phase === 'cancelled' ? (
+        /* Resultado de la cancelación */
+        <div className="space-y-4 text-center">
+          <motion.div
+            initial={{ scale: 0.6, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+            className={`mx-auto flex h-14 w-14 items-center justify-center rounded-full ring-2 ${
+              refunded ? 'bg-accent-500/15 ring-accent-500/40' : 'bg-amber-500/15 ring-amber-500/40'
+            }`}
+          >
+            <X className={`h-7 w-7 ${refunded ? 'text-accent-400' : 'text-amber-400'}`} />
+          </motion.div>
+          <div>
+            <p className="font-display text-base font-bold text-white">Reserva cancelada</p>
+            <p className="mt-1 text-sm text-zinc-400">
+              {refunded
+                ? 'Se te ha devuelto 1 crédito.'
+                : 'Al cancelar con menos de 2 horas, no se devuelve el crédito.'}
+            </p>
+          </div>
+          <button onClick={onClose} className="btn-primary w-full">
+            Listo
+          </button>
+        </div>
+      ) : booked ? (
         /* Ya apuntado */
         <div className="space-y-4 text-center">
           <motion.div
@@ -165,6 +203,16 @@ export default function BookingModal({
             </p>
             <p className="mt-1 text-sm text-zinc-400">Te esperamos en el box. 🥊</p>
           </div>
+
+          {/* Aviso de la política de cancelación */}
+          <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left text-xs leading-relaxed text-amber-200">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+            <span>
+              Si cancelas con <strong>más de 2 horas</strong> de antelación recuperas tu crédito.
+              Con menos de 2 horas, <strong>el crédito no se devuelve</strong>.
+            </span>
+          </div>
+
           {error && <p className="text-sm text-brand-300">{error}</p>}
           <div className="flex gap-2">
             <button
@@ -172,7 +220,7 @@ export default function BookingModal({
               disabled={phase === 'saving'}
               className="btn-ghost flex-1 hover:!text-brand-300"
             >
-              {phase === 'saving' ? 'Cancelando…' : 'Cancelar (recupero crédito)'}
+              {phase === 'saving' ? 'Cancelando…' : 'Cancelar reserva'}
             </button>
             <button onClick={onClose} className="btn-primary flex-1">
               Listo
@@ -214,10 +262,19 @@ export default function BookingModal({
               text="Esta sesión está completa. Prueba con otro horario."
             />
           ) : (
-            <p className="text-center text-xs text-zinc-500">
-              Reservar esta clase usará <span className="font-semibold text-zinc-300">1 crédito</span>.
-              Podrás cancelar y recuperarlo si la clase no ha empezado.
-            </p>
+            <div className="space-y-2">
+              <p className="text-center text-xs text-zinc-500">
+                Reservar esta clase usará <span className="font-semibold text-zinc-300">1 crédito</span>.
+              </p>
+              <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                <span>
+                  <strong>Importante:</strong> solo se devuelve el crédito si cancelas con{' '}
+                  <strong>más de 2 horas</strong> de antelación. Con menos de 2 horas, perderás el
+                  crédito.
+                </span>
+              </div>
+            </div>
           )}
 
           {error && <p className="text-center text-sm text-brand-300">{error}</p>}

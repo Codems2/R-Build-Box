@@ -257,17 +257,19 @@ export async function bookClass(slotId: string, classDate: string): Promise<numb
   return 0;
 }
 
-/** Cancela una reserva propia (devuelve el crédito si la clase no ha pasado). */
-export async function cancelMyBooking(bookingId: string): Promise<void> {
+/** Cancela una reserva propia. Devuelve si se reembolsó el crédito
+ *  (solo con más de 2 h de antelación). */
+export async function cancelMyBooking(bookingId: string): Promise<boolean> {
   if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.rpc('cancel_my_booking', { p_booking_id: bookingId });
+    const { data, error } = await supabase.rpc('cancel_my_booking', { p_booking_id: bookingId });
     if (error) throw toBookingError(error.message);
-    return;
+    return Boolean((data as { refunded?: boolean })?.refunded);
   }
   writeLS(
     LS_BOOKINGS,
     readLS<Booking[]>(LS_BOOKINGS, []).filter((b) => b.id !== bookingId),
   );
+  return true;
 }
 
 /** Solo admin: reservas futuras de un hueco */
