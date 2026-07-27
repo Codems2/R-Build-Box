@@ -99,7 +99,7 @@ export default function ClassTypeManager({ classTypes, onChanged }: Props) {
             layout
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="card flex items-center gap-3 p-3.5"
+            className="card flex min-w-0 items-center gap-3 p-3.5"
           >
             <span
               className="h-9 w-9 shrink-0 rounded-xl"

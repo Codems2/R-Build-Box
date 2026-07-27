@@ -103,7 +103,7 @@ export default function MembersManager() {
               layout
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="card flex items-center gap-3 p-3.5"
+              className="card flex min-w-0 items-center gap-3 p-3.5"
             >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-600/15 font-display text-xs font-bold text-brand-300 ring-1 ring-brand-500/20">
                 #{m.member_no}

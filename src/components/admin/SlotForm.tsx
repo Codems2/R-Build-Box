@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Repeat } from 'lucide-react';
 import Modal from '../Modal';
 import type { ClassType, ScheduleSlot, SlotInput, SlotKind } from '../../lib/types';
 import { DAY_NAMES, KIND_META } from '../../lib/types';
@@ -199,6 +200,16 @@ export default function SlotForm({
               }
             />
           </div>
+        </div>
+
+        {/* Aviso de recurrencia */}
+        <div className="flex items-start gap-2.5 rounded-xl border border-accent-500/20 bg-accent-500/10 p-3 text-xs leading-relaxed text-accent-300">
+          <Repeat className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Esta clase se repite <strong>todas las semanas</strong> ese día y a esa hora. La creas
+            una vez y aparece cada semana automáticamente; los socios reservan su sesión desde 2
+            días antes.
+          </span>
         </div>
 
         {/* Nota */}

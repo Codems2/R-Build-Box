@@ -102,7 +102,7 @@ export default function PlansManager({ onChanged }: { onChanged?: () => void }) 
               layout
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="card flex items-center gap-3 p-3.5"
+              className="card flex min-w-0 items-center gap-3 p-3.5"
             >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/25">
                 <Coins className="h-5 w-5" />
