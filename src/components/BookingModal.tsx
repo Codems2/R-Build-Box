@@ -56,6 +56,7 @@ export default function BookingModal({
   const [error, setError] = useState<string | null>(null);
   const [justBooked, setJustBooked] = useState(false);
   const [refunded, setRefunded] = useState(false);
+  const [confirmNoRefund, setConfirmNoRefund] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -63,6 +64,7 @@ export default function BookingModal({
       setError(null);
       setJustBooked(false);
       setRefunded(false);
+      setConfirmNoRefund(false);
     }
   }, [open, slot, classDate]);
 
@@ -77,6 +79,9 @@ export default function BookingModal({
   const unlimited = isAdmin; // los admins reservan siempre y sin gastar créditos
   const credits = profile?.credits ?? 0;
   const active = unlimited || (profile?.membership_active ?? false);
+  // ¿La cancelación devolvería el crédito? Solo con más de 2 h de antelación.
+  const classStartMs = new Date(`${classDate}T${slot.start_time}:00`).getTime();
+  const willRefund = Date.now() < classStartMs - 2 * 60 * 60 * 1000;
   // Ventana de reserva: solo hoy y hasta 2 días (los admins la ignoran)
   const daysAhead = daysFromTodayISO(classDate);
   const tooFar = !unlimited && daysAhead > BOOKING_WINDOW_DAYS;
@@ -101,6 +106,11 @@ export default function BookingModal({
 
   async function handleCancel() {
     if (!myBookingId) return;
+    // Socio que perdería el crédito: pedir confirmación antes de cancelar
+    if (!unlimited && !willRefund && !confirmNoRefund) {
+      setConfirmNoRefund(true);
+      return;
+    }
     setPhase('saving');
     setError(null);
     try {
@@ -211,28 +221,70 @@ export default function BookingModal({
             <p className="mt-1 text-sm text-zinc-400">Te esperamos en el box. 🥊</p>
           </div>
 
-          {/* Aviso de la política de cancelación */}
-          <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left text-xs leading-relaxed text-amber-200">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-            <span>
-              Si cancelas con <strong>más de 2 horas</strong> de antelación recuperas tu crédito.
-              Con menos de 2 horas, <strong>el crédito no se devuelve</strong>.
-            </span>
-          </div>
+          {confirmNoRefund ? (
+            /* Confirmación cuando el socio va a perder el crédito */
+            <>
+              <div className="flex items-start gap-2.5 rounded-xl border border-brand-500/40 bg-brand-500/10 p-3 text-left text-sm leading-relaxed text-brand-100">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-brand-300" />
+                <span>
+                  Al cancelar la reserva con tan poca antelación{' '}
+                  <strong>no te devolveremos el crédito</strong>. ¿Estás seguro?
+                </span>
+              </div>
+              {error && <p className="text-sm text-brand-300">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setConfirmNoRefund(false)}
+                  disabled={phase === 'saving'}
+                  className="btn-ghost flex-1"
+                >
+                  No, volver
+                </button>
+                <button
+                  onClick={() => void handleCancel()}
+                  disabled={phase === 'saving'}
+                  className="btn-primary flex-1"
+                >
+                  {phase === 'saving' ? 'Cancelando…' : 'Sí, cancelar'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Aviso de la política de cancelación (solo socios con créditos) */}
+              {!unlimited && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left text-xs leading-relaxed text-amber-200">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                  <span>
+                    {willRefund ? (
+                      <>
+                        Si cancelas ahora (más de 2 horas antes) <strong>recuperas tu crédito</strong>.
+                      </>
+                    ) : (
+                      <>
+                        Quedan menos de 2 horas para la clase: si cancelas,{' '}
+                        <strong>no se te devolverá el crédito</strong>.
+                      </>
+                    )}
+                  </span>
+                </div>
+              )}
 
-          {error && <p className="text-sm text-brand-300">{error}</p>}
-          <div className="flex gap-2">
-            <button
-              onClick={() => void handleCancel()}
-              disabled={phase === 'saving'}
-              className="btn-ghost flex-1 hover:!text-brand-300"
-            >
-              {phase === 'saving' ? 'Cancelando…' : 'Cancelar reserva'}
-            </button>
-            <button onClick={onClose} className="btn-primary flex-1">
-              Listo
-            </button>
-          </div>
+              {error && <p className="text-sm text-brand-300">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => void handleCancel()}
+                  disabled={phase === 'saving'}
+                  className="btn-ghost flex-1 hover:!text-brand-300"
+                >
+                  {phase === 'saving' ? 'Cancelando…' : 'Cancelar reserva'}
+                </button>
+                <button onClick={onClose} className="btn-primary flex-1">
+                  Listo
+                </button>
+              </div>
+            </>
+          )}
         </div>
       ) : (
         /* Reservar con crédito */
