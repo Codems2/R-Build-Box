@@ -6,6 +6,8 @@ import type {
   BookingCounts,
   ClassType,
   ClassTypeInput,
+  FinanceEntry,
+  FinanceEntryInput,
   Member,
   MemberInput,
   MyBookingRow,
@@ -451,6 +453,70 @@ export async function updateAppSettings(patch: AppSettings): Promise<void> {
     return;
   }
   writeLS(LS_SETTINGS, patch);
+}
+
+// ---------------------------------------------------------------------------
+// Finanzas: ingresos y gastos (solo admin, RLS lo garantiza)
+// ---------------------------------------------------------------------------
+
+const LS_FINANCE = 'rmbox_finance_v1';
+
+/** Movimientos entre dos fechas (ambas incluidas), más recientes primero */
+export async function fetchFinanceEntries(
+  fromISO: string,
+  toISO: string,
+): Promise<FinanceEntry[]> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase
+      .from('finance_entries')
+      .select('*')
+      .gte('entry_date', fromISO)
+      .lte('entry_date', toISO)
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    // numeric llega como string desde PostgREST
+    return (data as (Omit<FinanceEntry, 'amount'> & { amount: string | number })[]).map((e) => ({
+      ...e,
+      amount: Number(e.amount),
+    }));
+  }
+  return readLS<FinanceEntry[]>(LS_FINANCE, [])
+    .filter((e) => e.entry_date >= fromISO && e.entry_date <= toISO)
+    .sort((a, b) => b.entry_date.localeCompare(a.entry_date));
+}
+
+export async function createFinanceEntry(input: FinanceEntryInput): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from('finance_entries').insert(input);
+    if (error) throw error;
+    return;
+  }
+  writeLS(LS_FINANCE, [...readLS<FinanceEntry[]>(LS_FINANCE, []), { ...input, id: newId() }]);
+}
+
+export async function updateFinanceEntry(id: string, input: FinanceEntryInput): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from('finance_entries').update(input).eq('id', id);
+    if (error) throw error;
+    return;
+  }
+  writeLS(
+    LS_FINANCE,
+    readLS<FinanceEntry[]>(LS_FINANCE, []).map((e) => (e.id === id ? { ...e, ...input } : e)),
+  );
+}
+
+export async function deleteFinanceEntry(id: string): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from('finance_entries').delete().eq('id', id);
+    if (error) throw error;
+    return;
+  }
+  writeLS(
+    LS_FINANCE,
+    readLS<FinanceEntry[]>(LS_FINANCE, []).filter((e) => e.id !== id),
+  );
 }
 
 /** Extrae el mensaje de error del cuerpo JSON de una Edge Function */

@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { Loader2, Lock } from 'lucide-react';
 import AdminSchedule from '../components/admin/AdminSchedule';
 import ClassTypeManager from '../components/admin/ClassTypeManager';
+import FinanceManager from '../components/admin/FinanceManager';
 import MembersManager from '../components/admin/MembersManager';
 import SettingsManager from '../components/admin/SettingsManager';
 import { useAuth } from '../lib/auth';
@@ -61,8 +62,9 @@ function Dashboard() {
 
       <div className="space-y-10">
         <AdminSchedule />
-        <SettingsManager />
+        <FinanceManager />
         <MembersManager />
+        <SettingsManager />
         <ClassTypeManager classTypes={classTypes} onChanged={reload} />
       </div>
     </div>

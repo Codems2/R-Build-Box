@@ -50,6 +50,21 @@ export interface WeekStatus {
   unlimited: boolean;
 }
 
+export type FinanceKind = 'income' | 'expense';
+
+/** Apunte de ingresos/gastos del box (solo admin) */
+export interface FinanceEntry {
+  id: string;
+  kind: FinanceKind;
+  concept: string;
+  amount: number;
+  /** Fecha del movimiento (YYYY-MM-DD) */
+  entry_date: string;
+  created_at?: string;
+}
+
+export type FinanceEntryInput = Omit<FinanceEntry, 'id' | 'created_at'>;
+
 export interface Member {
   id: string;
   member_no: number;
