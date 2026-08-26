@@ -5,6 +5,14 @@ import App from './App';
 import { AuthProvider } from './lib/auth';
 import './index.css';
 
+// Captura temprana del evento de instalación (puede dispararse antes de que
+// monte React); lo guardamos para que el botón «Instalar» lo use luego.
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  (window as unknown as { __bip?: Event }).__bip = e;
+  window.dispatchEvent(new Event('bip-ready'));
+});
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>

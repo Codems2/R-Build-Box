@@ -3,6 +3,7 @@ import { AnimatePresence } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import Header from './components/Header';
 import ErrorBoundary from './components/ErrorBoundary';
+import InstallPrompt from './components/InstallPrompt';
 import SchedulePage from './pages/SchedulePage';
 import AdminPage from './pages/AdminPage';
 import LoginPage from './pages/LoginPage';
@@ -30,9 +31,12 @@ export default function App() {
   // Web privada: sin sesión, solo el login.
   if (!isAuthed) {
     return (
-      <AnimatePresence mode="wait">
-        <LoginPage key="login" />
-      </AnimatePresence>
+      <>
+        <AnimatePresence mode="wait">
+          <LoginPage key="login" />
+        </AnimatePresence>
+        <InstallPrompt />
+      </>
     );
   }
 
@@ -51,8 +55,9 @@ export default function App() {
         </ErrorBoundary>
       </main>
       <footer className="border-t border-white/5 py-6 text-center text-xs text-zinc-500">
-        © {new Date().getFullYear()} · Muay Thai Box
+        © {new Date().getFullYear()} · R-Build Box
       </footer>
+      <InstallPrompt />
     </div>
   );
 }
