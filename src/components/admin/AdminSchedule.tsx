@@ -122,8 +122,8 @@ export default function AdminSchedule() {
         </button>
       </div>
 
-      {/* Selector de día */}
-      <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none]">
+      {/* Selector de día: 7 columnas a ancho completo */}
+      <div className="mb-4 grid grid-cols-7 gap-1 sm:gap-1.5">
         {weekDates.map((d) => {
           const active = activeDate === d;
           const isToday = d === todayISO();
@@ -133,8 +133,10 @@ export default function AdminSchedule() {
             <button
               key={d}
               onClick={() => setSelectedDate(d)}
-              className={`relative flex shrink-0 flex-col items-center rounded-xl px-3.5 py-2 text-sm font-semibold transition ${
-                active ? 'text-white' : 'text-zinc-400 hover:text-zinc-200'
+              className={`relative flex flex-col items-center rounded-xl px-1 py-2 transition sm:py-2.5 ${
+                active
+                  ? 'text-white'
+                  : 'border border-white/[0.06] bg-white/[0.02] text-zinc-400 hover:bg-white/[0.05] hover:text-zinc-200'
               }`}
             >
               {active && (
@@ -144,12 +146,26 @@ export default function AdminSchedule() {
                   transition={{ type: 'spring', stiffness: 380, damping: 32 }}
                 />
               )}
-              <span className="relative z-10 capitalize">{name}</span>
-              <span className={`relative z-10 text-xs ${active ? 'text-white' : isToday ? 'text-brand-300' : 'text-zinc-500'}`}>
+              <span className="relative z-10 text-[10px] font-semibold uppercase tracking-wide sm:text-[11px]">
+                {name}
+              </span>
+              <span
+                className={`relative z-10 font-display text-base font-bold leading-tight sm:text-lg ${
+                  active ? 'text-white' : isToday ? 'text-brand-300' : 'text-zinc-200'
+                }`}
+              >
                 {num}
               </span>
-              <span className={`relative z-10 text-[9px] ${active ? 'text-white/70' : 'text-zinc-600'}`}>
-                {n === 0 ? '—' : n}
+              <span
+                className={`relative z-10 mt-0.5 rounded-full px-1.5 text-[9px] font-semibold leading-[14px] ${
+                  n > 0
+                    ? active
+                      ? 'bg-white/20 text-white'
+                      : 'bg-white/[0.07] text-zinc-400'
+                    : 'invisible'
+                }`}
+              >
+                {n > 0 ? n : 0}
               </span>
             </button>
           );
