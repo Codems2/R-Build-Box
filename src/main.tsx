@@ -23,6 +23,9 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 );
 
+// Aplica el logo del box a los iconos de la PWA (manifiesto + favicon) si lo hay.
+void import('./lib/pwaBranding').then((m) => m.applyPwaBranding());
+
 // Registra el service worker para poder instalar la web como app (PWA).
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {

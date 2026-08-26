@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
 import { CalendarRange, Check, Euro, Image as ImageIcon, Loader2, RotateCcw, Upload } from 'lucide-react';
 import { fetchAppSettings, resetLogo, updateAppSettings, uploadLogo } from '../../lib/api';
+import { applyPwaBranding, resetPwaBranding } from '../../lib/pwaBranding';
 import { useAuth } from '../../lib/auth';
 
 export default function SettingsManager() {
@@ -24,6 +25,7 @@ export default function SettingsManager() {
     try {
       await uploadLogo(file);
       await refreshBranding();
+      await applyPwaBranding(); // actualiza favicon/manifiesto en vivo
     } catch (err) {
       setLogoErr(err instanceof Error ? err.message : 'No se pudo subir el logo.');
     } finally {
@@ -38,6 +40,7 @@ export default function SettingsManager() {
     try {
       await resetLogo();
       await refreshBranding();
+      resetPwaBranding();
     } catch {
       setLogoErr('No se pudo restablecer el logo.');
     } finally {
@@ -107,8 +110,9 @@ export default function SettingsManager() {
               <ImageIcon className="h-4 w-4 text-accent-300" /> Logo del box
             </p>
             <p className="mt-0.5 text-xs leading-relaxed text-zinc-400">
-              Aparece en la cabecera y en la pantalla de acceso. Sube un PNG, JPG o WebP (máx. 3 MB);
-              se recomienda fondo transparente y forma cuadrada.
+              Aparece en la cabecera, en la pantalla de acceso y como icono de la app. Sube un PNG,
+              JPG o WebP (máx. 3 MB); se recomienda forma cuadrada. Nota: quien ya tenga la app
+              instalada verá el icono nuevo al reinstalarla.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <input ref={logoInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleLogo} />

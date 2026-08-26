@@ -476,68 +476,143 @@ export async function updateAppSettings(patch: {
 }
 
 // ---------------------------------------------------------------------------
-// Logo personalizado (bucket público `branding`)
+// Logo y branding (bucket público `branding`)
 // ---------------------------------------------------------------------------
 
-/** URL del logo configurado (o null). Legible sin sesión vía get_logo(). */
-export async function fetchLogoUrl(): Promise<string | null> {
-  if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase.rpc('get_logo');
-    if (error) return null;
-    return (data as string | null) ?? null;
-  }
-  return readLS<Partial<AppSettings>>(LS_SETTINGS, {}).logo_url ?? null;
+export interface PwaIcons {
+  any192: string;
+  any512: string;
+  maskable: string;
+}
+export interface Branding {
+  logo: string | null;
+  icons: PwaIcons | null;
 }
 
-/** Sube un nuevo logo (imagen) y guarda su URL en los ajustes. Solo admin. */
-export async function uploadLogo(file: File): Promise<string> {
+/** Logo + iconos de la app. Legible sin sesión vía get_branding(). */
+export async function fetchBranding(): Promise<Branding> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.rpc('get_branding');
+    if (error || !data) return { logo: null, icons: null };
+    const d = data as { logo: string | null; icons: PwaIcons | null };
+    return { logo: d.logo ?? null, icons: d.icons ?? null };
+  }
+  const ls = readLS<{ logo_url?: string; pwa_icons?: PwaIcons }>(LS_SETTINGS, {});
+  return { logo: ls.logo_url ?? null, icons: ls.pwa_icons ?? null };
+}
+
+/** URL del logo configurado (o null). */
+export async function fetchLogoUrl(): Promise<string | null> {
+  return (await fetchBranding()).logo;
+}
+
+/** Dibuja el logo centrado sobre un fondo de marca y devuelve un canvas cuadrado */
+async function renderIconCanvas(bitmap: ImageBitmap, size: number, frac: number, bg = '#0B0A0B') {
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext('2d');
+  if (!ctx) throw new Error('No se pudo procesar la imagen.');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, size, size);
+  const target = size * frac;
+  const s = target / Math.max(bitmap.width, bitmap.height);
+  const w = bitmap.width * s;
+  const h = bitmap.height * s;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(bitmap, (size - w) / 2, (size - h) / 2, w, h);
+  return c;
+}
+const canvasBlob = (c: HTMLCanvasElement) =>
+  new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('canvas'))), 'image/png'));
+
+// Especificaciones de los iconos: [nombre, tamaño, fracción del logo]
+const ICON_SPECS: [keyof PwaIcons, number, number][] = [
+  ['any192', 192, 0.82],
+  ['any512', 512, 0.82],
+  ['maskable', 512, 0.62],
+];
+
+/** Rutas de storage a limpiar a partir de un branding anterior */
+function brandingPaths(b: Branding): string[] {
+  const urls = [b.logo, b.icons?.any192, b.icons?.any512, b.icons?.maskable].filter(Boolean) as string[];
+  return urls
+    .map((u) => u.split('/branding/')[1]?.split('?')[0])
+    .filter((p): p is string => Boolean(p) && !p.startsWith('data:'));
+}
+
+/** Sube un logo nuevo, genera los iconos de la app y guarda todo. Solo admin. */
+export async function uploadLogo(file: File): Promise<Branding> {
   if (!file.type.startsWith('image/')) throw new Error('El logo debe ser una imagen (PNG, JPG o WebP).');
   if (file.size > 3 * 1024 * 1024) throw new Error('El logo no puede superar los 3 MB.');
-  if (isSupabaseConfigured && supabase) {
-    const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-    const path = `logo-${crypto.randomUUID()}.${ext}`;
-    const { error } = await supabase.storage.from('branding').upload(path, file, {
-      contentType: file.type,
-      upsert: true,
-    });
-    if (error) throw new Error('No se pudo subir el logo. Inténtalo de nuevo.');
-    const { data } = supabase.storage.from('branding').getPublicUrl(path);
-    const url = data.publicUrl;
-    // Guarda la URL y limpia el logo anterior si lo había
-    const prev = (await fetchAppSettings()).logo_url;
-    const { error: upErr } = await supabase.from('app_settings').update({ logo_url: url, updated_at: new Date().toISOString() }).eq('id', true);
-    if (upErr) throw upErr;
-    if (prev) {
-      const oldPath = prev.split('/branding/')[1]?.split('?')[0];
-      if (oldPath && oldPath !== path) await supabase.storage.from('branding').remove([oldPath]).catch(() => undefined);
-    }
-    return url;
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error('No se pudo leer la imagen. Prueba con un PNG o JPG.');
   }
-  // Demo: guarda el logo como data URL en localStorage
-  const dataUrl: string = await new Promise((res, rej) => {
+
+  if (isSupabaseConfigured && supabase) {
+    const prev = await fetchBranding();
+    const rid = crypto.randomUUID();
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+    // Logo original (para mostrar dentro de la web)
+    const logoPath = `logo-${rid}.${ext}`;
+    const up = await supabase.storage.from('branding').upload(logoPath, file, { contentType: file.type, upsert: true });
+    if (up.error) throw new Error('No se pudo subir el logo. Inténtalo de nuevo.');
+    const logoUrl = supabase.storage.from('branding').getPublicUrl(logoPath).data.publicUrl;
+    // Iconos de la PWA
+    const icons = {} as PwaIcons;
+    for (const [key, sz, frac] of ICON_SPECS) {
+      const blob = await canvasBlob(await renderIconCanvas(bitmap, sz, frac));
+      const ip = `${key}-${rid}.png`;
+      const r = await supabase.storage.from('branding').upload(ip, blob, { contentType: 'image/png', upsert: true });
+      if (r.error) throw new Error('No se pudieron generar los iconos.');
+      icons[key] = supabase.storage.from('branding').getPublicUrl(ip).data.publicUrl;
+    }
+    const { error: upErr } = await supabase
+      .from('app_settings')
+      .update({ logo_url: logoUrl, pwa_icons: icons, updated_at: new Date().toISOString() })
+      .eq('id', true);
+    if (upErr) throw upErr;
+    // Limpia los archivos del branding anterior
+    const old = brandingPaths(prev);
+    if (old.length) await supabase.storage.from('branding').remove(old).catch(() => undefined);
+    return { logo: logoUrl, icons };
+  }
+
+  // Demo: logo + iconos como data URLs en localStorage
+  const logoUrl: string = await new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => res(r.result as string);
     r.onerror = () => rej(new Error('No se pudo leer el archivo.'));
     r.readAsDataURL(file);
   });
-  writeLS(LS_SETTINGS, { ...readLS<Partial<AppSettings>>(LS_SETTINGS, {}), logo_url: dataUrl });
-  return dataUrl;
+  const icons = {} as PwaIcons;
+  for (const [key, sz, frac] of ICON_SPECS) {
+    icons[key] = (await renderIconCanvas(bitmap, sz, frac)).toDataURL('image/png');
+  }
+  writeLS(LS_SETTINGS, { ...readLS<Record<string, unknown>>(LS_SETTINGS, {}), logo_url: logoUrl, pwa_icons: icons });
+  return { logo: logoUrl, icons };
 }
 
-/** Vuelve al logo por defecto (borra la URL personalizada). Solo admin. */
+/** Vuelve al logo/iconos por defecto. Solo admin. */
 export async function resetLogo(): Promise<void> {
   if (isSupabaseConfigured && supabase) {
-    const prev = (await fetchAppSettings()).logo_url;
-    const { error } = await supabase.from('app_settings').update({ logo_url: null, updated_at: new Date().toISOString() }).eq('id', true);
+    const prev = await fetchBranding();
+    const { error } = await supabase
+      .from('app_settings')
+      .update({ logo_url: null, pwa_icons: null, updated_at: new Date().toISOString() })
+      .eq('id', true);
     if (error) throw error;
-    if (prev) {
-      const oldPath = prev.split('/branding/')[1]?.split('?')[0];
-      if (oldPath) await supabase.storage.from('branding').remove([oldPath]).catch(() => undefined);
-    }
+    const old = brandingPaths(prev);
+    if (old.length) await supabase.storage.from('branding').remove(old).catch(() => undefined);
     return;
   }
-  const cur = readLS<Partial<AppSettings>>(LS_SETTINGS, {});
+  const cur = readLS<Record<string, unknown>>(LS_SETTINGS, {});
   delete cur.logo_url;
+  delete cur.pwa_icons;
   writeLS(LS_SETTINGS, cur);
 }
 
