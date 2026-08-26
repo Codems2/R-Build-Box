@@ -14,3 +14,12 @@ createRoot(document.getElementById('root')!).render(
     </BrowserRouter>
   </StrictMode>,
 );
+
+// Registra el service worker para poder instalar la web como app (PWA).
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      /* sin SW la web sigue funcionando, solo no será instalable */
+    });
+  });
+}
