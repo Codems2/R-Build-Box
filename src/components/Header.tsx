@@ -1,13 +1,15 @@
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CalendarCheck, LogOut, ShieldCheck } from 'lucide-react';
+import { CalendarCheck, Download, LogOut, ShieldCheck } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '../lib/auth';
+import { useInstall } from '../lib/pwa';
 import { memberFullName } from '../lib/types';
 
 export default function Header() {
   const { pathname } = useLocation();
   const { isAdmin, profile, weekStatus, signOut } = useAuth();
+  const { canInstall, promptInstall } = useInstall();
 
   const firstName = profile?.first_name || memberFullName(profile ?? { first_name: null, last_name: null });
   const showWeek = Boolean(profile && weekStatus && (isAdmin || profile.membership_active));
@@ -69,6 +71,16 @@ export default function Header() {
           <span className="hidden text-sm text-zinc-400 sm:inline">
             Hola, <span className="font-medium text-zinc-200">{firstName}</span>
           </span>
+          {canInstall && (
+            <button
+              onClick={() => void promptInstall()}
+              className="btn-icon !text-accent-300 hover:!text-accent-200"
+              aria-label="Instalar la app"
+              title="Instalar la app"
+            >
+              <Download className="h-4 w-4" />
+            </button>
+          )}
           <button
             onClick={() => void signOut()}
             className="btn-icon"
