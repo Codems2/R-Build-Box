@@ -14,6 +14,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import Modal from '../Modal';
+import FinanceChart, { type MonthDatum } from './FinanceChart';
 import {
   createFinanceEntry,
   deleteFinanceEntry,
@@ -62,6 +63,7 @@ function formatEntryDate(iso: string): string {
 export default function FinanceManager() {
   const [ym, setYm] = useState(currentYM);
   const [entries, setEntries] = useState<FinanceEntry[] | null>(null);
+  const [history, setHistory] = useState<MonthDatum[] | null>(null);
   const [memberIncome, setMemberIncome] = useState<MemberIncomeRow[] | null>(null);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,9 +74,27 @@ export default function FinanceManager() {
   const load = useCallback(async () => {
     try {
       setError(null);
-      const { from, to } = monthRange(ym);
-      const [e, mi] = await Promise.all([fetchFinanceEntries(from, to), fetchMemberIncome()]);
-      setEntries(e);
+      // Una sola consulta de 6 meses: de ella salen el mes visible y la gráfica
+      const months = Array.from({ length: 6 }, (_, i) => shiftYM(ym, i - 5));
+      const { from } = monthRange(months[0]);
+      const { to } = monthRange(ym);
+      const [all, mi] = await Promise.all([fetchFinanceEntries(from, to), fetchMemberIncome()]);
+      const auto = mi.reduce((s, r) => s + r.amount, 0);
+      setEntries(all.filter((e) => e.entry_date.startsWith(ym)));
+      setHistory(
+        months.map((m) => {
+          const monthEntries = all.filter((e) => e.entry_date.startsWith(m));
+          return {
+            ym: m,
+            income:
+              auto +
+              monthEntries.filter((e) => e.kind === 'income').reduce((s, e) => s + e.amount, 0),
+            expense: monthEntries
+              .filter((e) => e.kind === 'expense')
+              .reduce((s, e) => s + e.amount, 0),
+          };
+        }),
+      );
       setMemberIncome(mi);
     } catch (e) {
       console.error(e);
@@ -84,6 +104,7 @@ export default function FinanceManager() {
 
   useEffect(() => {
     setEntries(null);
+    setHistory(null);
     void load();
   }, [load]);
 
@@ -182,6 +203,9 @@ export default function FinanceManager() {
           </p>
         </div>
       </div>
+
+      {/* Evolución de los últimos 6 meses (hasta el mes seleccionado) */}
+      {history !== null && <FinanceChart data={history} />}
 
       {/* Cuotas de socios: ingreso automático calculado en vivo */}
       {memberIncome !== null && (

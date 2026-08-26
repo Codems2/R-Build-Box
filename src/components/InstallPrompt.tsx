@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Download, Share, X } from 'lucide-react';
-import { isIOSSafari, isStandalone, useInstall } from '../lib/pwa';
+import { isIOSSafari, isMobileDevice, isStandalone, useInstall } from '../lib/pwa';
 
 const SNOOZE_KEY = 'rmbox_install_snoozed_until';
 const SNOOZE_HOURS = 12;
@@ -26,7 +26,8 @@ export default function InstallPrompt() {
     if (!isStandalone() && isIOSSafari()) setIosHint(true);
   }, []);
 
-  const show = !hidden && (canInstall || iosHint || manual);
+  // En PC no ofrecemos instalar: solo tiene sentido en el móvil/tablet
+  const show = isMobileDevice() && !hidden && (canInstall || iosHint || manual);
 
   function dismiss() {
     setHidden(true);

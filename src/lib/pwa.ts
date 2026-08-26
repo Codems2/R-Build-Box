@@ -41,6 +41,14 @@ export function isIOS(): boolean {
   return /iphone|ipad|ipod/i.test(navigator.userAgent);
 }
 
+/** Móvil o tablet: instalar la web como app solo tiene sentido ahí, no en PC */
+export function isMobileDevice(): boolean {
+  return (
+    /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent) ||
+    (window.matchMedia?.('(pointer: coarse)').matches && 'ontouchstart' in window)
+  );
+}
+
 /** Safari de iOS: el único que puede «Añadir a pantalla de inicio» en iPhone */
 export function isIOSSafari(): boolean {
   const ua = navigator.userAgent;
