@@ -3,42 +3,27 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Download, Share, X } from 'lucide-react';
 import { isIOSSafari, isStandalone, useInstall } from '../lib/pwa';
 
-const SNOOZE_KEY = 'rmbox_install_snoozed_until';
-const SNOOZE_DAYS = 1;
-
-/** ¿El usuario cerró el banner hace poco? (silenciado 1 día) */
-function isSnoozed(): boolean {
-  try {
-    const until = Number(localStorage.getItem(SNOOZE_KEY) || 0);
-    return Date.now() < until;
-  } catch {
-    return false;
-  }
-}
-
 export default function InstallPrompt() {
   const { canInstall, promptInstall } = useInstall();
   const [iosHint, setIosHint] = useState(false);
-  const [snoozed, setSnoozed] = useState(isSnoozed);
+  const [hidden, setHidden] = useState(false);
+  // Si el instalador nativo no está disponible, mostramos la vía manual
+  const [manual, setManual] = useState(false);
 
   useEffect(() => {
     if (!isStandalone() && isIOSSafari()) setIosHint(true);
   }, []);
 
-  const show = !snoozed && (canInstall || iosHint);
-
-  function dismiss() {
-    setSnoozed(true);
-    try {
-      localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_DAYS * 864e5));
-    } catch {
-      /* ignore */
-    }
-  }
+  const show = !hidden && (canInstall || iosHint || manual);
 
   async function install() {
     const outcome = await promptInstall();
-    if (outcome === 'dismissed') dismiss();
+    if (outcome === 'unavailable') {
+      // El navegador no ofreció el diálogo nativo: enseñamos cómo hacerlo a mano
+      setManual(true);
+    } else if (outcome === 'accepted') {
+      setHidden(true);
+    }
   }
 
   return (
@@ -66,6 +51,12 @@ export default function InstallPrompt() {
                   <Share className="inline h-3.5 w-3.5 -translate-y-px text-accent-400" /> Compartir y
                   luego <span className="font-medium text-zinc-100">«Añadir a pantalla de inicio»</span>.
                 </p>
+              ) : manual ? (
+                <p className="text-xs leading-snug text-zinc-300">
+                  Abre el menú del navegador{' '}
+                  <span className="font-medium text-zinc-100">(⋮)</span> y pulsa{' '}
+                  <span className="font-medium text-zinc-100">«Instalar aplicación»</span>.
+                </p>
               ) : (
                 <>
                   <p className="text-sm font-semibold text-white">Instala la app</p>
@@ -74,14 +65,14 @@ export default function InstallPrompt() {
               )}
             </div>
 
-            {canInstall && (
+            {canInstall && !manual && (
               <button onClick={() => void install()} className="btn-primary shrink-0 !px-3.5 !py-2 text-xs">
                 <Download className="h-4 w-4" /> Instalar
               </button>
             )}
 
             <button
-              onClick={dismiss}
+              onClick={() => setHidden(true)}
               className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/5 hover:text-zinc-300"
               aria-label="Cerrar"
             >
