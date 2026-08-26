@@ -232,6 +232,7 @@ export async function fetchMyBookings(): Promise<MyBookingRow[]> {
       .from('bookings')
       .select('id, slot_id, class_date')
       .eq('user_id', uid)
+      .eq('status', 'booked')
       .gte('class_date', iso);
     if (error) throw error;
     return data as MyBookingRow[];
@@ -262,17 +263,20 @@ export async function bookClass(slotId: string, classDate: string): Promise<void
   ]);
 }
 
-/** Cancela una reserva propia (libera la plaza y recupera cupo semanal). */
-export async function cancelMyBooking(bookingId: string): Promise<void> {
+/** Cancela una reserva propia. Devuelve `true` si hubo penalización por
+ *  cancelación tardía (dentro de la última hora): la plaza se libera pero la
+ *  clase sigue contando en el límite semanal. */
+export async function cancelMyBooking(bookingId: string): Promise<boolean> {
   if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.rpc('cancel_my_booking', { p_booking_id: bookingId });
+    const { data, error } = await supabase.rpc('cancel_my_booking', { p_booking_id: bookingId });
     if (error) throw toBookingError(error.message);
-    return;
+    return Boolean((data as { penalized?: boolean })?.penalized);
   }
   writeLS(
     LS_BOOKINGS,
     readLS<Booking[]>(LS_BOOKINGS, []).filter((b) => b.id !== bookingId),
   );
+  return false;
 }
 
 /** Estado semanal del socio: clases usadas / límite. `refISO` = cualquier
@@ -302,6 +306,7 @@ export async function fetchSlotBookings(slotId: string): Promise<Booking[]> {
       .from('bookings')
       .select('*')
       .eq('slot_id', slotId)
+      .eq('status', 'booked')
       .gte('class_date', iso)
       .order('class_date')
       .order('created_at');

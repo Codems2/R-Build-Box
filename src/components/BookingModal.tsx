@@ -57,6 +57,8 @@ export default function BookingModal({
   const [error, setError] = useState<string | null>(null);
   const [justBooked, setJustBooked] = useState(false);
   const [week, setWeek] = useState<WeekStatus | null>(null);
+  const [confirmPenalty, setConfirmPenalty] = useState(false);
+  const [penalized, setPenalized] = useState(false);
 
   const isAdmin = profile?.role === 'admin';
   const unlimited = isAdmin || (week?.unlimited ?? false);
@@ -68,6 +70,8 @@ export default function BookingModal({
     setError(null);
     setJustBooked(false);
     setWeek(null);
+    setConfirmPenalty(false);
+    setPenalized(false);
     let active = true;
     void fetchWeekStatus(classDate)
       .then((w) => active && setWeek(w))
@@ -86,6 +90,9 @@ export default function BookingModal({
   const booked = Boolean(myBookingId);
   const active = unlimited || (profile?.membership_active ?? false);
   const remaining = week ? Math.max(0, week.limit - week.used) : null;
+  // Penalización por cancelación tardía: dentro de la última hora (o ya empezada)
+  const classStartMs = new Date(`${classDate}T${slot.start_time}:00`).getTime();
+  const willPenalize = !unlimited && Date.now() >= classStartMs - 60 * 60 * 1000;
   const reachedLimit = !unlimited && week != null && week.used >= week.limit;
   // Ventana de reserva: solo hoy y hasta 2 días (los admins la ignoran)
   const daysAhead = daysFromTodayISO(classDate);
@@ -114,10 +121,16 @@ export default function BookingModal({
 
   async function handleCancel() {
     if (!myBookingId) return;
+    // Si la cancelación penaliza (pierde la clase), pedir confirmación primero
+    if (willPenalize && !confirmPenalty) {
+      setConfirmPenalty(true);
+      return;
+    }
     setPhase('saving');
     setError(null);
     try {
-      await cancelMyBooking(myBookingId);
+      const wasPenalized = await cancelMyBooking(myBookingId);
+      setPenalized(wasPenalized);
       setPhase('cancelled');
       await refreshProfile();
       onChanged();
@@ -188,14 +201,18 @@ export default function BookingModal({
             initial={{ scale: 0.6, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 260, damping: 18 }}
-            className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent-500/15 ring-2 ring-accent-500/40"
+            className={`mx-auto flex h-14 w-14 items-center justify-center rounded-full ring-2 ${
+              penalized ? 'bg-brand-500/15 ring-brand-500/40' : 'bg-accent-500/15 ring-accent-500/40'
+            }`}
           >
-            <X className="h-7 w-7 text-accent-400" />
+            <X className={`h-7 w-7 ${penalized ? 'text-brand-300' : 'text-accent-400'}`} />
           </motion.div>
           <div>
             <p className="font-display text-base font-bold text-white">Reserva cancelada</p>
             <p className="mt-1 text-sm text-zinc-400">
-              Has liberado tu plaza y recuperado una clase de esta semana.
+              {penalized
+                ? 'Al cancelar dentro de la última hora, esta clase cuenta como usada en tu semana.'
+                : 'Has liberado tu plaza y recuperado una clase de esta semana.'}
             </p>
           </div>
           <button onClick={onClose} className="btn-primary w-full">
@@ -220,19 +237,61 @@ export default function BookingModal({
             <p className="mt-1 text-sm text-zinc-400">Te esperamos en el box. 🥊</p>
           </div>
 
-          {error && <p className="text-sm text-brand-300">{error}</p>}
-          <div className="flex gap-2">
-            <button
-              onClick={() => void handleCancel()}
-              disabled={phase === 'saving'}
-              className="btn-ghost flex-1 hover:!text-brand-300"
-            >
-              {phase === 'saving' ? 'Cancelando…' : 'Cancelar reserva'}
-            </button>
-            <button onClick={onClose} className="btn-primary flex-1">
-              Listo
-            </button>
-          </div>
+          {confirmPenalty ? (
+            /* Confirmación: la cancelación tardía hace perder la clase */
+            <>
+              <div className="flex items-start gap-2.5 rounded-xl border border-brand-500/40 bg-brand-500/10 p-3 text-left text-sm leading-relaxed text-brand-100">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-brand-300" />
+                <span>
+                  Queda menos de <strong>1 hora</strong> para la clase. Si cancelas ahora{' '}
+                  <strong>perderás esta clase</strong>: contará como usada en tu límite de esta
+                  semana. ¿Seguro que quieres cancelar?
+                </span>
+              </div>
+              {error && <p className="text-sm text-brand-300">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setConfirmPenalty(false)}
+                  disabled={phase === 'saving'}
+                  className="btn-ghost flex-1"
+                >
+                  No, volver
+                </button>
+                <button
+                  onClick={() => void handleCancel()}
+                  disabled={phase === 'saving'}
+                  className="btn-primary flex-1"
+                >
+                  {phase === 'saving' ? 'Cancelando…' : 'Sí, cancelar'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              {willPenalize && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left text-xs leading-relaxed text-amber-200">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                  <span>
+                    Queda menos de 1 hora para la clase: si cancelas ahora,{' '}
+                    <strong>perderás esta clase de tu semana</strong>.
+                  </span>
+                </div>
+              )}
+              {error && <p className="text-sm text-brand-300">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => void handleCancel()}
+                  disabled={phase === 'saving'}
+                  className="btn-ghost flex-1 hover:!text-brand-300"
+                >
+                  {phase === 'saving' ? 'Cancelando…' : 'Cancelar reserva'}
+                </button>
+                <button onClick={onClose} className="btn-primary flex-1">
+                  Listo
+                </button>
+              </div>
+            </>
+          )}
         </div>
       ) : (
         /* Reservar */
@@ -281,11 +340,20 @@ export default function BookingModal({
               Como administrador puedes reservar cualquier clase, sin límite semanal.
             </p>
           ) : (
-            <p className="text-center text-xs text-zinc-500">
-              Reservar esta clase usará{' '}
-              <span className="font-semibold text-zinc-300">1 de tus {week?.limit} clases</span> de la
-              semana{remaining != null ? ` (te quedarían ${Math.max(0, remaining - 1)})` : ''}.
-            </p>
+            <div className="space-y-2">
+              <p className="text-center text-xs text-zinc-500">
+                Reservar esta clase usará{' '}
+                <span className="font-semibold text-zinc-300">1 de tus {week?.limit} clases</span> de la
+                semana{remaining != null ? ` (te quedarían ${Math.max(0, remaining - 1)})` : ''}.
+              </p>
+              <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                <span>
+                  <strong>Cancelación:</strong> si cancelas con menos de{' '}
+                  <strong>1 hora</strong> de antelación, perderás esa clase (contará en tu semana).
+                </span>
+              </div>
+            </div>
           )}
 
           {error && <p className="text-center text-sm text-brand-300">{error}</p>}
