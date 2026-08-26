@@ -16,16 +16,18 @@ import Modal from '../Modal';
 import {
   deleteMember,
   fetchMembers,
+  fetchPlans,
   inviteMember,
   resendInvite,
   updateMemberMembership,
 } from '../../lib/api';
-import { memberFullName, type Member, type MemberInput } from '../../lib/types';
+import { memberFullName, type Member, type MemberInput, type Plan } from '../../lib/types';
 
 const EMPTY: MemberInput = { first_name: '', last_name: '', phone: '', email: '' };
 
 export default function MembersManager() {
   const [members, setMembers] = useState<Member[] | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [managing, setManaging] = useState<Member | null>(null);
@@ -34,7 +36,9 @@ export default function MembersManager() {
   const load = useCallback(async () => {
     try {
       setError(null);
-      setMembers(await fetchMembers());
+      const [m, p] = await Promise.all([fetchMembers(), fetchPlans()]);
+      setMembers(m);
+      setPlans(p);
     } catch (e) {
       console.error(e);
       setError('No se pudieron cargar los socios.');
@@ -140,6 +144,9 @@ export default function MembersManager() {
                         Inactivo
                       </span>
                     )}
+                    <span className="text-[11px] text-zinc-400">
+                      {m.plan_name ?? 'Cuota estándar'}
+                    </span>
                   </div>
                 )}
               </div>
@@ -185,7 +192,12 @@ export default function MembersManager() {
       )}
 
       <NewMemberModal open={open} onClose={() => setOpen(false)} onDone={load} />
-      <MembershipModal member={managing} onClose={() => setManaging(null)} onSaved={load} />
+      <MembershipModal
+        member={managing}
+        plans={plans}
+        onClose={() => setManaging(null)}
+        onSaved={load}
+      />
     </section>
   );
 }
@@ -332,20 +344,24 @@ function NewMemberModal({
 
 function MembershipModal({
   member,
+  plans,
   onClose,
   onSaved,
 }: {
   member: Member | null;
+  plans: Plan[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
   const [active, setActive] = useState(false);
+  const [planId, setPlanId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (member) {
       setActive(member.membership_active);
+      setPlanId(member.plan_id);
       setError(null);
     }
   }, [member]);
@@ -357,7 +373,7 @@ function MembershipModal({
     setSaving(true);
     setError(null);
     try {
-      await updateMemberMembership(member.id, { membership_active: active });
+      await updateMemberMembership(member.id, { membership_active: active, plan_id: planId });
       await onSaved();
       onClose();
     } catch (err) {
@@ -390,9 +406,33 @@ function MembershipModal({
           </span>
         </button>
 
+        {/* Plan de mensualidad */}
+        <div>
+          <label htmlFor="mm-plan" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            Plan de mensualidad
+          </label>
+          <select
+            id="mm-plan"
+            className="input"
+            value={planId ?? ''}
+            onChange={(e) => setPlanId(e.target.value || null)}
+          >
+            <option value="">— Cuota estándar —</option>
+            {plans.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} · {p.monthly_price.toLocaleString('es-ES')} €/mes
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-600">
+            Determina la cuota que aporta este socio a los ingresos mensuales. Sin plan, se aplica
+            la cuota estándar de «Configuración».
+          </p>
+        </div>
+
         <p className="text-[11px] leading-relaxed text-zinc-500">
-          Un socio inactivo no puede reservar clases hasta que lo reactives (por ejemplo, tras el
-          pago). El número de clases por semana se configura para todo el box en «Configuración».
+          Un socio inactivo no puede reservar clases ni cuenta en los ingresos hasta que lo
+          reactives (por ejemplo, tras el pago).
         </p>
 
         {error && <p className="text-sm text-brand-300">{error}</p>}

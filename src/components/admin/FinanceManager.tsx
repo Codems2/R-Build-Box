@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
 import {
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -9,6 +10,7 @@ import {
   Trash2,
   TrendingDown,
   TrendingUp,
+  Users,
   Wallet,
 } from 'lucide-react';
 import Modal from '../Modal';
@@ -16,10 +18,11 @@ import {
   createFinanceEntry,
   deleteFinanceEntry,
   fetchFinanceEntries,
+  fetchMemberIncome,
   updateFinanceEntry,
 } from '../../lib/api';
 import { todayISO } from '../../lib/dates';
-import type { FinanceEntry, FinanceKind } from '../../lib/types';
+import type { FinanceEntry, FinanceKind, MemberIncomeRow } from '../../lib/types';
 
 const EUR = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
 
@@ -59,6 +62,8 @@ function formatEntryDate(iso: string): string {
 export default function FinanceManager() {
   const [ym, setYm] = useState(currentYM);
   const [entries, setEntries] = useState<FinanceEntry[] | null>(null);
+  const [memberIncome, setMemberIncome] = useState<MemberIncomeRow[] | null>(null);
+  const [showBreakdown, setShowBreakdown] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<FinanceEntry | null>(null);
@@ -68,7 +73,9 @@ export default function FinanceManager() {
     try {
       setError(null);
       const { from, to } = monthRange(ym);
-      setEntries(await fetchFinanceEntries(from, to));
+      const [e, mi] = await Promise.all([fetchFinanceEntries(from, to), fetchMemberIncome()]);
+      setEntries(e);
+      setMemberIncome(mi);
     } catch (e) {
       console.error(e);
       setError('No se pudieron cargar los movimientos.');
@@ -81,14 +88,16 @@ export default function FinanceManager() {
   }, [load]);
 
   const totals = useMemo(() => {
-    const income = (entries ?? [])
+    const auto = (memberIncome ?? []).reduce((s, r) => s + r.amount, 0);
+    const manual = (entries ?? [])
       .filter((e) => e.kind === 'income')
       .reduce((s, e) => s + e.amount, 0);
     const expense = (entries ?? [])
       .filter((e) => e.kind === 'expense')
       .reduce((s, e) => s + e.amount, 0);
-    return { income, expense, balance: income - expense };
-  }, [entries]);
+    const income = auto + manual;
+    return { auto, income, expense, balance: income - expense };
+  }, [entries, memberIncome]);
 
   async function handleDelete(entry: FinanceEntry) {
     if (!window.confirm(`¿Eliminar «${entry.concept}» (${EUR.format(entry.amount)})?`)) return;
@@ -173,6 +182,53 @@ export default function FinanceManager() {
           </p>
         </div>
       </div>
+
+      {/* Cuotas de socios: ingreso automático calculado en vivo */}
+      {memberIncome !== null && (
+        <div className="card mb-2 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowBreakdown((v) => !v)}
+            className="flex w-full min-w-0 items-center gap-3 p-3.5 text-left"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-500/15 text-accent-300 ring-1 ring-accent-500/25">
+              <Users className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm font-semibold text-white">
+                Cuotas de socios
+                <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 ring-1 ring-white/10">
+                  Automático
+                </span>
+              </p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                {memberIncome.length === 0
+                  ? 'Sin socios activos este mes'
+                  : `${memberIncome.length} ${memberIncome.length === 1 ? 'socio activo' : 'socios activos'} · según su plan o la cuota estándar`}
+              </p>
+            </div>
+            <p className="shrink-0 font-display text-sm font-bold text-accent-300">
+              +{EUR.format(totals.auto)}
+            </p>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform ${showBreakdown ? 'rotate-180' : ''}`}
+            />
+          </button>
+          {showBreakdown && memberIncome.length > 0 && (
+            <div className="border-t border-white/5 px-3.5 py-2">
+              {memberIncome.map((r) => (
+                <div key={r.member_id} className="flex min-w-0 items-center gap-2 py-1.5">
+                  <p className="min-w-0 flex-1 truncate text-xs text-zinc-300">{r.member_name}</p>
+                  <p className="shrink-0 text-[11px] text-zinc-500">{r.plan_name}</p>
+                  <p className="w-20 shrink-0 text-right text-xs font-semibold text-zinc-200">
+                    {EUR.format(r.amount)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {error && <p className="mb-3 text-sm text-brand-300">{error}</p>}
 

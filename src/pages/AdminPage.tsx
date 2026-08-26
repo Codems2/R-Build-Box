@@ -4,6 +4,7 @@ import AdminSchedule from '../components/admin/AdminSchedule';
 import ClassTypeManager from '../components/admin/ClassTypeManager';
 import FinanceManager from '../components/admin/FinanceManager';
 import MembersManager from '../components/admin/MembersManager';
+import PlansManager from '../components/admin/PlansManager';
 import SettingsManager from '../components/admin/SettingsManager';
 import { useAuth } from '../lib/auth';
 import { useSchedule } from '../hooks/useSchedule';
@@ -64,6 +65,7 @@ function Dashboard() {
         <AdminSchedule />
         <FinanceManager />
         <MembersManager />
+        <PlansManager />
         <SettingsManager />
         <ClassTypeManager classTypes={classTypes} onChanged={reload} />
       </div>

@@ -40,6 +40,26 @@ export type ClassTypeInput = Omit<ClassType, 'id'>;
 export interface AppSettings {
   /** Máximo de clases que un socio puede reservar por semana */
   weekly_class_limit: number;
+  /** Cuota mensual estándar (€) para socios sin plan */
+  default_monthly_fee: number;
+}
+
+/** Plan de mensualidad (tarifa configurable por el admin) */
+export interface Plan {
+  id: string;
+  name: string;
+  monthly_price: number;
+  description: string | null;
+}
+
+export type PlanInput = Omit<Plan, 'id'>;
+
+/** Cuota mensual que aporta un socio activo (cálculo automático) */
+export interface MemberIncomeRow {
+  member_id: string;
+  member_name: string;
+  plan_name: string;
+  amount: number;
 }
 
 /** Estado semanal de reservas del socio (clases usadas / límite) */
@@ -75,6 +95,8 @@ export interface Member {
   phone: string | null;
   activated: boolean;
   membership_active: boolean;
+  plan_id: string | null;
+  plan_name: string | null;
   created_at?: string;
 }
 

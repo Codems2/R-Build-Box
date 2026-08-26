@@ -9,8 +9,11 @@ import type {
   FinanceEntry,
   FinanceEntryInput,
   Member,
+  MemberIncomeRow,
   MemberInput,
   MyBookingRow,
+  Plan,
+  PlanInput,
   ScheduleSlot,
   SlotInput,
   WeekStatus,
@@ -19,7 +22,8 @@ import { countKey } from './types';
 import { mondayOfWeekISO, shiftISO, todayISO } from './dates';
 
 const LS_SETTINGS = 'rmbox_settings_v1';
-const DEFAULT_SETTINGS: AppSettings = { weekly_class_limit: 3 };
+const LS_PLANS = 'rmbox_plans_v2';
+const DEFAULT_SETTINGS: AppSettings = { weekly_class_limit: 3, default_monthly_fee: 60 };
 
 const LS_SLOTS = 'rmbox_slots_v1';
 const LS_TYPES = 'rmbox_class_types_v1';
@@ -378,6 +382,9 @@ export async function inviteMember(input: MemberInput): Promise<void> {
       last_name: input.last_name.trim(),
       phone: input.phone.trim() || null,
       activated: false,
+      membership_active: false,
+      plan_id: null,
+      plan_name: null,
     },
   ]);
 }
@@ -408,10 +415,10 @@ export async function deleteMember(userId: string): Promise<void> {
   );
 }
 
-/** Solo admin: activar / desactivar la membresía de un socio */
+/** Solo admin: activar/desactivar la membresía o cambiar el plan de un socio */
 export async function updateMemberMembership(
   memberId: string,
-  patch: { membership_active?: boolean },
+  patch: { membership_active?: boolean; plan_id?: string | null },
 ): Promise<void> {
   if (isSupabaseConfigured && supabase) {
     const { error } = await supabase.from('profiles').update(patch).eq('id', memberId);
@@ -434,26 +441,113 @@ export async function fetchAppSettings(): Promise<AppSettings> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase
       .from('app_settings')
-      .select('weekly_class_limit')
+      .select('weekly_class_limit, default_monthly_fee')
       .eq('id', true)
       .single();
     if (error) throw error;
-    return { weekly_class_limit: Number((data as { weekly_class_limit: number }).weekly_class_limit) };
+    const row = data as { weekly_class_limit: number; default_monthly_fee: string | number };
+    return {
+      weekly_class_limit: Number(row.weekly_class_limit),
+      default_monthly_fee: Number(row.default_monthly_fee),
+    };
   }
-  return readLS<AppSettings>(LS_SETTINGS, DEFAULT_SETTINGS);
+  return { ...DEFAULT_SETTINGS, ...readLS<Partial<AppSettings>>(LS_SETTINGS, {}) };
 }
 
 export async function updateAppSettings(patch: AppSettings): Promise<void> {
   if (isSupabaseConfigured && supabase) {
     const { error } = await supabase
       .from('app_settings')
-      .update({ weekly_class_limit: patch.weekly_class_limit, updated_at: new Date().toISOString() })
+      .update({
+        weekly_class_limit: patch.weekly_class_limit,
+        default_monthly_fee: patch.default_monthly_fee,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', true);
     if (error) throw error;
     return;
   }
   writeLS(LS_SETTINGS, patch);
 }
+
+// ---------------------------------------------------------------------------
+// Planes de mensualidad (el admin los gestiona; los socios pueden leerlos)
+// ---------------------------------------------------------------------------
+
+export async function fetchPlans(): Promise<Plan[]> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase
+      .from('plans')
+      .select('*')
+      .order('monthly_price');
+    if (error) throw error;
+    return (data as (Omit<Plan, 'monthly_price'> & { monthly_price: string | number })[]).map(
+      (p) => ({ ...p, monthly_price: Number(p.monthly_price) }),
+    );
+  }
+  return readLS<Plan[]>(LS_PLANS, []);
+}
+
+export async function createPlan(input: PlanInput): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from('plans').insert(input);
+    if (error) throw error;
+    return;
+  }
+  writeLS(LS_PLANS, [...readLS<Plan[]>(LS_PLANS, []), { ...input, id: newId() }]);
+}
+
+export async function updatePlan(id: string, input: PlanInput): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from('plans').update(input).eq('id', id);
+    if (error) throw error;
+    return;
+  }
+  writeLS(
+    LS_PLANS,
+    readLS<Plan[]>(LS_PLANS, []).map((p) => (p.id === id ? { ...p, ...input } : p)),
+  );
+}
+
+export async function deletePlan(id: string): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from('plans').delete().eq('id', id);
+    if (error) throw error;
+    return;
+  }
+  writeLS(
+    LS_PLANS,
+    readLS<Plan[]>(LS_PLANS, []).filter((p) => p.id !== id),
+  );
+}
+
+/** Solo admin: cuotas mensuales automáticas de los socios activos.
+ *  Con plan → precio del plan; sin plan → cuota estándar. */
+export async function fetchMemberIncome(): Promise<MemberIncomeRow[]> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.rpc('member_income');
+    if (error) throw error;
+    return (data as (Omit<MemberIncomeRow, 'amount'> & { amount: string | number })[]).map(
+      (r) => ({ ...r, amount: Number(r.amount) }),
+    );
+  }
+  const fee = (await fetchAppSettings()).default_monthly_fee;
+  const plans = readLS<Plan[]>(LS_PLANS, []);
+  return readLS<Member[]>(LS_MEMBERS, [])
+    .filter((m) => m.role !== 'admin' && m.membership_active)
+    .map((m) => {
+      const plan = plans.find((p) => p.id === m.plan_id);
+      return {
+        member_id: m.id,
+        member_name: memberFullNameLS(m),
+        plan_name: plan?.name ?? 'Cuota estándar',
+        amount: plan?.monthly_price ?? fee,
+      };
+    });
+}
+
+const memberFullNameLS = (m: Member) =>
+  [m.first_name, m.last_name].filter(Boolean).join(' ').trim() || m.email || 'Socio';
 
 // ---------------------------------------------------------------------------
 // Finanzas: ingresos y gastos (solo admin, RLS lo garantiza)
