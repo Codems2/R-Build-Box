@@ -4,9 +4,9 @@ import { Download, Share, X } from 'lucide-react';
 import { isIOSSafari, isStandalone, useInstall } from '../lib/pwa';
 
 const SNOOZE_KEY = 'rmbox_install_snoozed_until';
-const SNOOZE_DAYS = 30;
+const SNOOZE_DAYS = 1;
 
-/** ¿El usuario cerró el banner hace poco? (silenciado 30 días) */
+/** ¿El usuario cerró el banner hace poco? (silenciado 1 día) */
 function isSnoozed(): boolean {
   try {
     const until = Number(localStorage.getItem(SNOOZE_KEY) || 0);
