@@ -1,14 +1,49 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
-import { CalendarRange, Check, Euro, Loader2 } from 'lucide-react';
-import { fetchAppSettings, updateAppSettings } from '../../lib/api';
+import { CalendarRange, Check, Euro, Image as ImageIcon, Loader2, RotateCcw, Upload } from 'lucide-react';
+import { fetchAppSettings, resetLogo, updateAppSettings, uploadLogo } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 
 export default function SettingsManager() {
+  const { logoUrl, refreshBranding } = useAuth();
   const [limit, setLimit] = useState<number | null>(null);
   const [fee, setFee] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoErr, setLogoErr] = useState<string | null>(null);
+  const logoInput = useRef<HTMLInputElement>(null);
+
+  async function handleLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setLogoBusy(true);
+    setLogoErr(null);
+    try {
+      await uploadLogo(file);
+      await refreshBranding();
+    } catch (err) {
+      setLogoErr(err instanceof Error ? err.message : 'No se pudo subir el logo.');
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+
+  async function handleResetLogo() {
+    if (!window.confirm('¿Volver al logo por defecto?')) return;
+    setLogoBusy(true);
+    setLogoErr(null);
+    try {
+      await resetLogo();
+      await refreshBranding();
+    } catch {
+      setLogoErr('No se pudo restablecer el logo.');
+    } finally {
+      setLogoBusy(false);
+    }
+  }
 
   useEffect(() => {
     void fetchAppSettings()
@@ -49,6 +84,58 @@ export default function SettingsManager() {
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="font-display text-lg font-bold text-white">Configuración</h2>
       </div>
+
+      {/* Logo del box */}
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="card mb-4 p-4 sm:p-5"
+      >
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] p-2">
+            <img
+              key={logoUrl ?? 'default'}
+              src={logoUrl ?? '/logo.png'}
+              alt="Logo actual"
+              className="h-full w-full object-contain"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/logo.png'; }}
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="flex items-center gap-2 text-sm font-semibold text-white">
+              <ImageIcon className="h-4 w-4 text-accent-300" /> Logo del box
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed text-zinc-400">
+              Aparece en la cabecera y en la pantalla de acceso. Sube un PNG, JPG o WebP (máx. 3 MB);
+              se recomienda fondo transparente y forma cuadrada.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <input ref={logoInput} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleLogo} />
+              <button
+                type="button"
+                onClick={() => logoInput.current?.click()}
+                disabled={logoBusy}
+                className="btn-primary !px-3.5 !py-2 text-xs"
+              >
+                {logoBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {logoBusy ? 'Subiendo…' : 'Cambiar logo'}
+              </button>
+              {logoUrl && (
+                <button
+                  type="button"
+                  onClick={() => void handleResetLogo()}
+                  disabled={logoBusy}
+                  className="btn-ghost !px-3 !py-2 text-xs"
+                >
+                  <RotateCcw className="h-4 w-4" /> Por defecto
+                </button>
+              )}
+            </div>
+            {logoErr && <p className="mt-2 text-sm text-brand-300">{logoErr}</p>}
+          </div>
+        </div>
+      </motion.div>
 
       <motion.div
         layout

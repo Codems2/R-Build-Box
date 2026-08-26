@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { supabase, isSupabaseConfigured } from './supabase';
-import { fetchWeekStatus } from './api';
+import { fetchWeekStatus, fetchLogoUrl } from './api';
 import type { WeekStatus } from './types';
 
 export interface Profile {
@@ -26,12 +26,15 @@ interface AuthContextValue {
   profile: Profile | null;
   /** Clases usadas / límite de la semana actual */
   weekStatus: WeekStatus | null;
+  /** URL del logo configurado (null = por defecto) */
+  logoUrl: string | null;
   loading: boolean;
   demoMode: boolean;
   signIn: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<string | null>;
   refreshProfile: () => Promise<void>;
+  refreshBranding: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -39,12 +42,14 @@ const AuthContext = createContext<AuthContextValue>({
   isAdmin: false,
   profile: null,
   weekStatus: null,
+  logoUrl: null,
   loading: true,
   demoMode: true,
   signIn: async () => 'No inicializado',
   signOut: async () => {},
   resetPassword: async () => null,
   refreshProfile: async () => {},
+  refreshBranding: async () => {},
 });
 
 const DEMO_KEY = 'rmbox_demo_session';
@@ -73,9 +78,26 @@ const DEMO_PROFILES: Record<string, Profile> = {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [weekStatus, setWeekStatus] = useState<WeekStatus | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [isAuthed, setIsAuthed] = useState(false);
   const [loading, setLoading] = useState(true);
   const loadProfileRef = useRef<() => Promise<void>>(async () => {});
+
+  // El logo se carga siempre (también sin sesión, para la pantalla de login)
+  useEffect(() => {
+    let active = true;
+    void fetchLogoUrl().then((u) => active && setLogoUrl(u)).catch(() => active && setLogoUrl(null));
+    return () => {
+      active = false;
+    };
+  }, []);
+  const refreshBranding = async () => {
+    try {
+      setLogoUrl(await fetchLogoUrl());
+    } catch {
+      setLogoUrl(null);
+    }
+  };
 
   useEffect(() => {
     // ---- Modo demo (sin Supabase configurado) ----
@@ -204,12 +226,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAdmin: profile?.role === 'admin',
         profile,
         weekStatus,
+        logoUrl,
         loading,
         demoMode: !isSupabaseConfigured,
         signIn,
         signOut,
         resetPassword,
         refreshProfile,
+        refreshBranding,
       }}
     >
       {children}

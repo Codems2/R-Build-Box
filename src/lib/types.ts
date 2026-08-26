@@ -42,6 +42,8 @@ export interface AppSettings {
   weekly_class_limit: number;
   /** Cuota mensual estándar (€) para socios sin plan */
   default_monthly_fee: number;
+  /** URL del logo personalizado (null = logo por defecto) */
+  logo_url: string | null;
 }
 
 /** Plan de mensualidad (tarifa configurable por el admin) */

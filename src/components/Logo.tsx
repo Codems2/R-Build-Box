@@ -1,26 +1,35 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useAuth } from '../lib/auth';
 
 /**
- * Muestra el logo del box desde `public/logo.png`.
- * Mientras el archivo no exista, usa una marca abstracta con la paleta
- * de la web como respaldo (sin texto).
+ * Muestra el logo del box: el personalizado (Ajustes) si lo hay, si no el de
+ * `public/logo.png`, y como último respaldo una marca abstracta sin texto.
  */
 export default function Logo({ className = 'h-10 w-10' }: { className?: string }) {
-  const [missing, setMissing] = useState(false);
+  const { logoUrl } = useAuth();
+  // 0 = logo configurado, 1 = logo por defecto, 2 = marca SVG
+  const [stage, setStage] = useState(0);
 
-  if (!missing) {
+  // Si cambia el logo configurado, reintenta desde el principio
+  useEffect(() => {
+    setStage(logoUrl ? 0 : 1);
+  }, [logoUrl]);
+
+  const src = stage === 0 && logoUrl ? logoUrl : '/logo.png';
+
+  if (stage < 2) {
     return (
       <img
-        src="/logo.png"
-        alt="Logo del box de muay thai"
+        src={src}
+        alt="Logo del box"
         className={`${className} object-contain drop-shadow-[0_0_14px_rgba(217,43,83,0.35)]`}
-        onError={() => setMissing(true)}
+        onError={() => setStage((s) => s + 1)}
       />
     );
   }
 
   return (
-    <svg viewBox="0 0 64 64" className={className} aria-label="Muay Thai Box" role="img">
+    <svg viewBox="0 0 64 64" className={className} aria-label="Box" role="img">
       <defs>
         <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#E64D72" />

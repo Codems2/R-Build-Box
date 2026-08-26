@@ -23,7 +23,7 @@ import { mondayOfWeekISO, shiftISO, todayISO } from './dates';
 
 const LS_SETTINGS = 'rmbox_settings_v1';
 const LS_PLANS = 'rmbox_plans_v2';
-const DEFAULT_SETTINGS: AppSettings = { weekly_class_limit: 3, default_monthly_fee: 60 };
+const DEFAULT_SETTINGS: AppSettings = { weekly_class_limit: 3, default_monthly_fee: 60, logo_url: null };
 
 const LS_SLOTS = 'rmbox_slots_v1';
 const LS_TYPES = 'rmbox_class_types_v1';
@@ -441,20 +441,24 @@ export async function fetchAppSettings(): Promise<AppSettings> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase
       .from('app_settings')
-      .select('weekly_class_limit, default_monthly_fee')
+      .select('weekly_class_limit, default_monthly_fee, logo_url')
       .eq('id', true)
       .single();
     if (error) throw error;
-    const row = data as { weekly_class_limit: number; default_monthly_fee: string | number };
+    const row = data as { weekly_class_limit: number; default_monthly_fee: string | number; logo_url: string | null };
     return {
       weekly_class_limit: Number(row.weekly_class_limit),
       default_monthly_fee: Number(row.default_monthly_fee),
+      logo_url: row.logo_url ?? null,
     };
   }
   return { ...DEFAULT_SETTINGS, ...readLS<Partial<AppSettings>>(LS_SETTINGS, {}) };
 }
 
-export async function updateAppSettings(patch: AppSettings): Promise<void> {
+export async function updateAppSettings(patch: {
+  weekly_class_limit: number;
+  default_monthly_fee: number;
+}): Promise<void> {
   if (isSupabaseConfigured && supabase) {
     const { error } = await supabase
       .from('app_settings')
@@ -467,7 +471,74 @@ export async function updateAppSettings(patch: AppSettings): Promise<void> {
     if (error) throw error;
     return;
   }
-  writeLS(LS_SETTINGS, patch);
+  const cur = readLS<Partial<AppSettings>>(LS_SETTINGS, {});
+  writeLS(LS_SETTINGS, { ...cur, ...patch });
+}
+
+// ---------------------------------------------------------------------------
+// Logo personalizado (bucket público `branding`)
+// ---------------------------------------------------------------------------
+
+/** URL del logo configurado (o null). Legible sin sesión vía get_logo(). */
+export async function fetchLogoUrl(): Promise<string | null> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.rpc('get_logo');
+    if (error) return null;
+    return (data as string | null) ?? null;
+  }
+  return readLS<Partial<AppSettings>>(LS_SETTINGS, {}).logo_url ?? null;
+}
+
+/** Sube un nuevo logo (imagen) y guarda su URL en los ajustes. Solo admin. */
+export async function uploadLogo(file: File): Promise<string> {
+  if (!file.type.startsWith('image/')) throw new Error('El logo debe ser una imagen (PNG, JPG o WebP).');
+  if (file.size > 3 * 1024 * 1024) throw new Error('El logo no puede superar los 3 MB.');
+  if (isSupabaseConfigured && supabase) {
+    const ext = (file.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+    const path = `logo-${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from('branding').upload(path, file, {
+      contentType: file.type,
+      upsert: true,
+    });
+    if (error) throw new Error('No se pudo subir el logo. Inténtalo de nuevo.');
+    const { data } = supabase.storage.from('branding').getPublicUrl(path);
+    const url = data.publicUrl;
+    // Guarda la URL y limpia el logo anterior si lo había
+    const prev = (await fetchAppSettings()).logo_url;
+    const { error: upErr } = await supabase.from('app_settings').update({ logo_url: url, updated_at: new Date().toISOString() }).eq('id', true);
+    if (upErr) throw upErr;
+    if (prev) {
+      const oldPath = prev.split('/branding/')[1]?.split('?')[0];
+      if (oldPath && oldPath !== path) await supabase.storage.from('branding').remove([oldPath]).catch(() => undefined);
+    }
+    return url;
+  }
+  // Demo: guarda el logo como data URL en localStorage
+  const dataUrl: string = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result as string);
+    r.onerror = () => rej(new Error('No se pudo leer el archivo.'));
+    r.readAsDataURL(file);
+  });
+  writeLS(LS_SETTINGS, { ...readLS<Partial<AppSettings>>(LS_SETTINGS, {}), logo_url: dataUrl });
+  return dataUrl;
+}
+
+/** Vuelve al logo por defecto (borra la URL personalizada). Solo admin. */
+export async function resetLogo(): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const prev = (await fetchAppSettings()).logo_url;
+    const { error } = await supabase.from('app_settings').update({ logo_url: null, updated_at: new Date().toISOString() }).eq('id', true);
+    if (error) throw error;
+    if (prev) {
+      const oldPath = prev.split('/branding/')[1]?.split('?')[0];
+      if (oldPath) await supabase.storage.from('branding').remove([oldPath]).catch(() => undefined);
+    }
+    return;
+  }
+  const cur = readLS<Partial<AppSettings>>(LS_SETTINGS, {});
+  delete cur.logo_url;
+  writeLS(LS_SETTINGS, cur);
 }
 
 // ---------------------------------------------------------------------------
