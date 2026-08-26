@@ -80,6 +80,8 @@ export interface FinanceEntry {
   amount: number;
   /** Fecha del movimiento (YYYY-MM-DD) */
   entry_date: string;
+  /** Factura adjunta (ruta en Storage), solo gastos */
+  invoice_path: string | null;
   created_at?: string;
 }
 

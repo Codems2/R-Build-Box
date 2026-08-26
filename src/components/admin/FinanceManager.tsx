@@ -1,28 +1,37 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
 import {
+  Camera,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  FileText,
   Loader2,
+  Paperclip,
   Pencil,
   Plus,
   Trash2,
   TrendingDown,
   TrendingUp,
+  Upload,
   Users,
   Wallet,
+  X,
 } from 'lucide-react';
 import Modal from '../Modal';
 import FinanceChart, { type MonthDatum } from './FinanceChart';
 import {
   createFinanceEntry,
   deleteFinanceEntry,
+  deleteInvoice,
   fetchFinanceEntries,
   fetchMemberIncome,
+  getInvoiceUrl,
   updateFinanceEntry,
+  uploadInvoice,
 } from '../../lib/api';
 import { todayISO } from '../../lib/dates';
+import { isMobileDevice } from '../../lib/pwa';
 import type { FinanceEntry, FinanceKind, MemberIncomeRow } from '../../lib/types';
 
 const EUR = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
@@ -124,13 +133,23 @@ export default function FinanceManager() {
     if (!window.confirm(`¿Eliminar «${entry.concept}» (${EUR.format(entry.amount)})?`)) return;
     setBusyId(entry.id);
     try {
-      await deleteFinanceEntry(entry.id);
+      await deleteFinanceEntry(entry.id, entry.invoice_path);
       await load();
     } catch (e) {
       console.error(e);
       window.alert('No se pudo eliminar el movimiento.');
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function openInvoice(entry: FinanceEntry) {
+    if (!entry.invoice_path) return;
+    try {
+      const url = await getInvoiceUrl(entry.invoice_path);
+      window.open(url, '_blank', 'noopener');
+    } catch {
+      window.alert('No se pudo abrir la factura.');
     }
   }
 
@@ -301,6 +320,16 @@ export default function FinanceManager() {
                 {e.kind === 'income' ? '+' : '−'}
                 {EUR.format(e.amount)}
               </p>
+              {e.invoice_path && (
+                <button
+                  onClick={() => void openInvoice(e)}
+                  className="btn-icon !text-accent-300 hover:!text-accent-200"
+                  aria-label="Ver factura"
+                  title="Ver factura"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </button>
+              )}
               <button
                 onClick={() => setEditing(e)}
                 className="btn-icon"
@@ -355,8 +384,13 @@ function EntryModal({
   const [concept, setConcept] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(todayISO());
+  const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
+  const [existingInvoice, setExistingInvoice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const mobile = isMobileDevice();
 
   useEffect(() => {
     if (open) {
@@ -364,9 +398,26 @@ function EntryModal({
       setConcept(entry?.concept ?? '');
       setAmount(entry ? String(entry.amount) : '');
       setDate(entry?.entry_date ?? todayISO());
+      setInvoiceFile(null);
+      setExistingInvoice(entry?.invoice_path ?? null);
       setError(null);
     }
   }, [open, entry]);
+
+  function pickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    if (f) setInvoiceFile(f);
+    e.target.value = ''; // permite volver a elegir el mismo archivo
+  }
+
+  async function viewExisting() {
+    if (!existingInvoice) return;
+    try {
+      window.open(await getInvoiceUrl(existingInvoice), '_blank', 'noopener');
+    } catch {
+      setError('No se pudo abrir la factura.');
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -378,11 +429,20 @@ function EntryModal({
     setSaving(true);
     setError(null);
     try {
+      // Factura: subir la nueva, o borrar la anterior si se quitó / cambió el tipo
+      let invoicePath = kind === 'expense' ? existingInvoice : null;
+      if (kind === 'expense' && invoiceFile) {
+        invoicePath = await uploadInvoice(invoiceFile);
+      }
+      if (entry?.invoice_path && entry.invoice_path !== invoicePath) {
+        await deleteInvoice(entry.invoice_path).catch(() => undefined);
+      }
       const input = {
         kind,
         concept: concept.trim(),
         amount: Math.round(value * 100) / 100,
         entry_date: date,
+        invoice_path: invoicePath,
       };
       if (entry) await updateFinanceEntry(entry.id, input);
       else await createFinanceEntry(input);
@@ -390,7 +450,7 @@ function EntryModal({
       onClose();
     } catch (err) {
       console.error(err);
-      setError('No se pudo guardar el movimiento.');
+      setError(err instanceof Error ? err.message : 'No se pudo guardar el movimiento.');
     } finally {
       setSaving(false);
     }
@@ -472,6 +532,92 @@ function EntryModal({
             />
           </div>
         </div>
+
+        {/* Factura adjunta (solo gastos): foto con la cámara o archivo imagen/PDF */}
+        {kind === 'expense' && (
+          <div>
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              Factura <span className="normal-case text-zinc-600">(opcional)</span>
+            </label>
+
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,application/pdf"
+              className="hidden"
+              onChange={pickFile}
+            />
+            <input
+              ref={cameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={pickFile}
+            />
+
+            {invoiceFile ? (
+              <div className="flex items-center gap-2.5 rounded-xl border border-accent-500/25 bg-accent-500/10 px-3 py-2.5">
+                <FileText className="h-4 w-4 shrink-0 text-accent-300" />
+                <p className="min-w-0 flex-1 truncate text-xs text-zinc-200">
+                  {invoiceFile.name}
+                  <span className="ml-1.5 text-zinc-500">
+                    {invoiceFile.size < 1024 * 1024
+                      ? `${Math.max(1, Math.round(invoiceFile.size / 1024))} KB`
+                      : `${(invoiceFile.size / (1024 * 1024)).toFixed(1)} MB`}
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setInvoiceFile(null)}
+                  className="shrink-0 rounded-lg p-1 text-zinc-500 transition hover:text-zinc-200"
+                  aria-label="Quitar factura"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : existingInvoice ? (
+              <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
+                <Paperclip className="h-4 w-4 shrink-0 text-accent-300" />
+                <button
+                  type="button"
+                  onClick={() => void viewExisting()}
+                  className="min-w-0 flex-1 truncate text-left text-xs font-medium text-zinc-200 underline-offset-2 hover:underline"
+                >
+                  Ver factura adjunta
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExistingInvoice(null)}
+                  className="shrink-0 rounded-lg p-1 text-zinc-500 transition hover:text-brand-300"
+                  aria-label="Quitar factura"
+                  title="Quitar factura"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 px-3 py-2.5 text-xs font-medium text-zinc-300 transition hover:border-white/30 hover:text-white"
+                >
+                  <Upload className="h-4 w-4" /> Subir imagen o PDF
+                </button>
+                {mobile && (
+                  <button
+                    type="button"
+                    onClick={() => cameraRef.current?.click()}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 px-3 py-2.5 text-xs font-medium text-zinc-300 transition hover:border-white/30 hover:text-white"
+                  >
+                    <Camera className="h-4 w-4" /> Hacer foto
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {error && <p className="text-sm text-brand-300">{error}</p>}
 

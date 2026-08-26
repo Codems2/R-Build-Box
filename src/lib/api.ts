@@ -601,7 +601,8 @@ export async function updateFinanceEntry(id: string, input: FinanceEntryInput): 
   );
 }
 
-export async function deleteFinanceEntry(id: string): Promise<void> {
+export async function deleteFinanceEntry(id: string, invoicePath?: string | null): Promise<void> {
+  if (invoicePath) await deleteInvoice(invoicePath).catch(() => undefined);
   if (isSupabaseConfigured && supabase) {
     const { error } = await supabase.from('finance_entries').delete().eq('id', id);
     if (error) throw error;
@@ -611,6 +612,55 @@ export async function deleteFinanceEntry(id: string): Promise<void> {
     LS_FINANCE,
     readLS<FinanceEntry[]>(LS_FINANCE, []).filter((e) => e.id !== id),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Facturas de gastos (bucket privado `invoices`, solo admin)
+// ---------------------------------------------------------------------------
+
+const INVOICE_MAX_BYTES = 10 * 1024 * 1024;
+
+/** Sube una factura (imagen o PDF) y devuelve su ruta en Storage. */
+export async function uploadInvoice(file: File): Promise<string> {
+  if (file.size > INVOICE_MAX_BYTES) {
+    throw new Error('La factura no puede superar los 10 MB.');
+  }
+  if (isSupabaseConfigured && supabase) {
+    const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '') || 'bin';
+    const path = `${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from('invoices').upload(path, file, {
+      contentType: file.type || undefined,
+    });
+    if (error) throw new Error('No se pudo subir la factura. Inténtalo de nuevo.');
+    return path;
+  }
+  // Demo: la factura se guarda embebida como data URL (solo archivos pequeños)
+  if (file.size > 2 * 1024 * 1024) throw new Error('Modo demo: máximo 2 MB.');
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** URL temporal (1 h) para ver una factura. */
+export async function getInvoiceUrl(path: string): Promise<string> {
+  if (path.startsWith('data:')) return path; // demo
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.storage.from('invoices').createSignedUrl(path, 3600);
+    if (error || !data?.signedUrl) throw new Error('No se pudo abrir la factura.');
+    return data.signedUrl;
+  }
+  return path;
+}
+
+/** Borra una factura del bucket (al eliminar o sustituir el adjunto). */
+export async function deleteInvoice(path: string): Promise<void> {
+  if (path.startsWith('data:')) return; // demo
+  if (isSupabaseConfigured && supabase) {
+    await supabase.storage.from('invoices').remove([path]);
+  }
 }
 
 /** Extrae el mensaje de error del cuerpo JSON de una Edge Function */
