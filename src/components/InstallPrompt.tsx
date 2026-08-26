@@ -3,10 +3,22 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Download, Share, X } from 'lucide-react';
 import { isIOSSafari, isStandalone, useInstall } from '../lib/pwa';
 
+const SNOOZE_KEY = 'rmbox_install_snoozed_until';
+const SNOOZE_HOURS = 12;
+
+/** ¿El usuario cerró el banner hace poco? (silenciado 12 h) */
+function isSnoozed(): boolean {
+  try {
+    return Date.now() < Number(localStorage.getItem(SNOOZE_KEY) || 0);
+  } catch {
+    return false;
+  }
+}
+
 export default function InstallPrompt() {
   const { canInstall, promptInstall } = useInstall();
   const [iosHint, setIosHint] = useState(false);
-  const [hidden, setHidden] = useState(false);
+  const [hidden, setHidden] = useState(isSnoozed);
   // Si el instalador nativo no está disponible, mostramos la vía manual
   const [manual, setManual] = useState(false);
 
@@ -15,6 +27,15 @@ export default function InstallPrompt() {
   }, []);
 
   const show = !hidden && (canInstall || iosHint || manual);
+
+  function dismiss() {
+    setHidden(true);
+    try {
+      localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_HOURS * 36e5));
+    } catch {
+      /* ignore */
+    }
+  }
 
   async function install() {
     const outcome = await promptInstall();
@@ -72,7 +93,7 @@ export default function InstallPrompt() {
             )}
 
             <button
-              onClick={() => setHidden(true)}
+              onClick={dismiss}
               className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-white/5 hover:text-zinc-300"
               aria-label="Cerrar"
             >
