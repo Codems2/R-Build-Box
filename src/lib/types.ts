@@ -36,15 +36,19 @@ export interface Session {
 export type SlotInput = Omit<ScheduleSlot, 'id'>;
 export type ClassTypeInput = Omit<ClassType, 'id'>;
 
-export interface Plan {
-  id: string;
-  name: string;
-  weekly_credits: number;
-  price: number | null;
-  description: string | null;
+/** Ajustes globales configurables por el admin */
+export interface AppSettings {
+  /** Máximo de clases que un socio puede reservar por semana */
+  weekly_class_limit: number;
 }
 
-export type PlanInput = Omit<Plan, 'id'>;
+/** Estado semanal de reservas del socio (clases usadas / límite) */
+export interface WeekStatus {
+  used: number;
+  limit: number;
+  /** Los admins no tienen límite */
+  unlimited: boolean;
+}
 
 export interface Member {
   id: string;
@@ -55,10 +59,7 @@ export interface Member {
   last_name: string | null;
   phone: string | null;
   activated: boolean;
-  plan_id: string | null;
-  plan_name: string | null;
   membership_active: boolean;
-  credits: number;
   created_at?: string;
 }
 

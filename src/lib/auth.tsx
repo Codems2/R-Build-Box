@@ -7,6 +7,8 @@ import {
   type ReactNode,
 } from 'react';
 import { supabase, isSupabaseConfigured } from './supabase';
+import { fetchWeekStatus } from './api';
+import type { WeekStatus } from './types';
 
 export interface Profile {
   member_no: number | null;
@@ -16,16 +18,14 @@ export interface Profile {
   phone: string | null;
   email: string | null;
   membership_active: boolean;
-  credits: number;
-  plan_id: string | null;
-  plan_name: string | null;
-  weekly_credits: number | null;
 }
 
 interface AuthContextValue {
   isAuthed: boolean;
   isAdmin: boolean;
   profile: Profile | null;
+  /** Clases usadas / límite de la semana actual */
+  weekStatus: WeekStatus | null;
   loading: boolean;
   demoMode: boolean;
   signIn: (email: string, password: string) => Promise<string | null>;
@@ -38,6 +38,7 @@ const AuthContext = createContext<AuthContextValue>({
   isAuthed: false,
   isAdmin: false,
   profile: null,
+  weekStatus: null,
   loading: true,
   demoMode: true,
   signIn: async () => 'No inicializado',
@@ -57,10 +58,6 @@ const DEMO_PROFILES: Record<string, Profile> = {
     phone: null,
     email: 'admin@demo',
     membership_active: true,
-    credits: 5,
-    plan_id: 'demo-plan',
-    plan_name: 'Ilimitado',
-    weekly_credits: 5,
   },
   socio: {
     member_no: 7,
@@ -70,15 +67,12 @@ const DEMO_PROFILES: Record<string, Profile> = {
     phone: '600000000',
     email: 'socio@demo',
     membership_active: true,
-    credits: 3,
-    plan_id: 'demo-plan',
-    plan_name: 'Básico',
-    weekly_credits: 3,
   },
 };
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [weekStatus, setWeekStatus] = useState<WeekStatus | null>(null);
   const [isAuthed, setIsAuthed] = useState(false);
   const [loading, setLoading] = useState(true);
   const loadProfileRef = useRef<() => Promise<void>>(async () => {});
@@ -90,6 +84,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (kind && DEMO_PROFILES[kind]) {
         setProfile(DEMO_PROFILES[kind]);
         setIsAuthed(true);
+        void fetchWeekStatus()
+          .then((w) => setWeekStatus(kind === 'admin' ? { ...w, unlimited: true } : w))
+          .catch(() => setWeekStatus(null));
       }
       setLoading(false);
       return;
@@ -101,26 +98,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: userData } = await supabase!.auth.getUser();
       const uid = userData.user?.id;
       if (!uid) {
-        if (active) setProfile(null);
+        if (active) {
+          setProfile(null);
+          setWeekStatus(null);
+        }
         return;
       }
       // Filtramos por el propio id: un admin puede ver todas las fichas por
       // RLS, y sin este filtro maybeSingle() recibiría varias filas y fallaría.
       const { data } = await supabase!
         .from('profiles')
-        .select(
-          'member_no, role, first_name, last_name, phone, email, membership_active, credits, plan_id, plans(name, weekly_credits)',
-        )
+        .select('member_no, role, first_name, last_name, phone, email, membership_active')
         .eq('id', uid)
         .maybeSingle();
       if (active && data) {
-        const row = data as unknown as Record<string, unknown> & {
-          plans?:
-            | { name: string; weekly_credits: number }
-            | { name: string; weekly_credits: number }[]
-            | null;
-        };
-        const plan = Array.isArray(row.plans) ? row.plans[0] : row.plans;
+        const row = data as unknown as Record<string, unknown>;
         setProfile({
           member_no: row.member_no as number,
           role: row.role as 'user' | 'admin',
@@ -129,13 +121,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           phone: row.phone as string | null,
           email: row.email as string | null,
           membership_active: Boolean(row.membership_active),
-          credits: (row.credits as number) ?? 0,
-          plan_id: row.plan_id as string | null,
-          plan_name: plan?.name ?? null,
-          weekly_credits: plan?.weekly_credits ?? null,
         });
       } else if (active) {
         setProfile(null);
+      }
+      try {
+        const w = await fetchWeekStatus();
+        if (active) setWeekStatus(w);
+      } catch {
+        if (active) setWeekStatus(null);
       }
     }
     loadProfileRef.current = loadProfile;
@@ -151,7 +145,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!active) return;
       setIsAuthed(Boolean(session));
       if (session) void loadProfile();
-      else setProfile(null);
+      else {
+        setProfile(null);
+        setWeekStatus(null);
+      }
     });
     return () => {
       active = false;
@@ -166,6 +163,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.setItem(DEMO_KEY, kind);
       setProfile(DEMO_PROFILES[kind]);
       setIsAuthed(true);
+      void fetchWeekStatus()
+        .then((w) => setWeekStatus(kind === 'admin' ? { ...w, unlimited: true } : w))
+        .catch(() => setWeekStatus(null));
       return null;
     }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -177,6 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isSupabaseConfigured || !supabase) {
       sessionStorage.removeItem(DEMO_KEY);
       setProfile(null);
+      setWeekStatus(null);
       setIsAuthed(false);
       return;
     }
@@ -202,6 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthed,
         isAdmin: profile?.role === 'admin',
         profile,
+        weekStatus,
         loading,
         demoMode: !isSupabaseConfigured,
         signIn,

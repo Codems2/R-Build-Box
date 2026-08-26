@@ -3,7 +3,6 @@ import { motion } from 'framer-motion';
 import {
   BadgeCheck,
   Clock3,
-  Coins,
   Loader2,
   Mail,
   Phone,
@@ -17,18 +16,16 @@ import Modal from '../Modal';
 import {
   deleteMember,
   fetchMembers,
-  fetchPlans,
   inviteMember,
   resendInvite,
   updateMemberMembership,
 } from '../../lib/api';
-import { memberFullName, type Member, type MemberInput, type Plan } from '../../lib/types';
+import { memberFullName, type Member, type MemberInput } from '../../lib/types';
 
 const EMPTY: MemberInput = { first_name: '', last_name: '', phone: '', email: '' };
 
 export default function MembersManager() {
   const [members, setMembers] = useState<Member[] | null>(null);
-  const [plans, setPlans] = useState<Plan[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [managing, setManaging] = useState<Member | null>(null);
@@ -37,9 +34,7 @@ export default function MembersManager() {
   const load = useCallback(async () => {
     try {
       setError(null);
-      const [m, p] = await Promise.all([fetchMembers(), fetchPlans()]);
-      setMembers(m);
-      setPlans(p);
+      setMembers(await fetchMembers());
     } catch (e) {
       console.error(e);
       setError('No se pudieron cargar los socios.');
@@ -145,10 +140,6 @@ export default function MembersManager() {
                         Inactivo
                       </span>
                     )}
-                    <span className="text-[11px] text-zinc-400">{m.plan_name ?? 'Sin plan'}</span>
-                    <span className="inline-flex items-center gap-1 text-[11px] text-amber-300/90">
-                      <Coins className="h-3 w-3" /> {m.credits} créd.
-                    </span>
                   </div>
                 )}
               </div>
@@ -194,12 +185,7 @@ export default function MembersManager() {
       )}
 
       <NewMemberModal open={open} onClose={() => setOpen(false)} onDone={load} />
-      <MembershipModal
-        member={managing}
-        plans={plans}
-        onClose={() => setManaging(null)}
-        onSaved={load}
-      />
+      <MembershipModal member={managing} onClose={() => setManaging(null)} onSaved={load} />
     </section>
   );
 }
@@ -346,26 +332,20 @@ function NewMemberModal({
 
 function MembershipModal({
   member,
-  plans,
   onClose,
   onSaved,
 }: {
   member: Member | null;
-  plans: Plan[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
-  const [planId, setPlanId] = useState<string | null>(null);
   const [active, setActive] = useState(false);
-  const [credits, setCredits] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (member) {
-      setPlanId(member.plan_id);
       setActive(member.membership_active);
-      setCredits(member.credits);
       setError(null);
     }
   }, [member]);
@@ -377,16 +357,7 @@ function MembershipModal({
     setSaving(true);
     setError(null);
     try {
-      // Al activar o cambiar de plan, el trigger de la BBDD fija los créditos
-      // del plan; por eso enviamos el ajuste manual de créditos por separado.
-      const activating = active && (!member.membership_active || planId !== member.plan_id);
-      await updateMemberMembership(member.id, {
-        plan_id: planId,
-        membership_active: active,
-      });
-      if (!activating && credits !== member.credits) {
-        await updateMemberMembership(member.id, { credits });
-      }
+      await updateMemberMembership(member.id, { membership_active: active });
       await onSaved();
       onClose();
     } catch (err) {
@@ -415,49 +386,14 @@ function MembershipModal({
             {active ? 'Socio activo' : 'Socio inactivo'}
           </span>
           <span className={`text-xs ${active ? 'text-accent-300' : 'text-zinc-500'}`}>
-            {active ? 'renueva créditos cada semana' : 'no se le renuevan'}
+            {active ? 'puede reservar' : 'no puede reservar'}
           </span>
         </button>
 
-        {/* Plan */}
-        <div>
-          <label htmlFor="mm-plan" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
-            Plan
-          </label>
-          <select
-            id="mm-plan"
-            className="input"
-            value={planId ?? ''}
-            onChange={(e) => setPlanId(e.target.value || null)}
-          >
-            <option value="">— Sin plan —</option>
-            {plans.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} · {p.weekly_credits} créd./sem
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Créditos actuales */}
-        <div>
-          <label htmlFor="mm-credits" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
-            Créditos actuales
-          </label>
-          <input
-            id="mm-credits"
-            type="number"
-            min={0}
-            max={100}
-            className="input"
-            value={credits}
-            onChange={(e) => setCredits(Number(e.target.value))}
-          />
-          <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-600">
-            Al activar el socio o cambiarle de plan se le fijan automáticamente los créditos del
-            plan. Usa este campo solo para ajustes manuales.
-          </p>
-        </div>
+        <p className="text-[11px] leading-relaxed text-zinc-500">
+          Un socio inactivo no puede reservar clases hasta que lo reactives (por ejemplo, tras el
+          pago). El número de clases por semana se configura para todo el box en «Configuración».
+        </p>
 
         {error && <p className="text-sm text-brand-300">{error}</p>}
 

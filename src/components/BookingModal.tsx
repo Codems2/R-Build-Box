@@ -6,14 +6,14 @@ import {
   CalendarClock,
   Check,
   Clock,
-  Coins,
+  Loader2,
   Lock,
   Ticket,
   Users,
   X,
 } from 'lucide-react';
 import Modal from './Modal';
-import { BookingError, bookClass, cancelMyBooking } from '../lib/api';
+import { BookingError, bookClass, cancelMyBooking, fetchWeekStatus } from '../lib/api';
 import { BOOKING_WINDOW_DAYS, daysFromTodayISO, formatDateES, shiftISO } from '../lib/dates';
 import { useAuth } from '../lib/auth';
 import {
@@ -24,6 +24,7 @@ import {
   slotTitle,
   type ClassType,
   type ScheduleSlot,
+  type WeekStatus,
 } from '../lib/types';
 
 interface Props {
@@ -35,7 +36,7 @@ interface Props {
   count: number;
   /** Id de mi reserva para esta sesión, si ya estoy apuntado */
   myBookingId: string | null;
-  /** Refresca ocupación, mis reservas y créditos tras reservar/cancelar */
+  /** Refresca ocupación y mis reservas tras reservar/cancelar */
   onChanged: () => void;
 }
 
@@ -51,21 +52,29 @@ export default function BookingModal({
   myBookingId,
   onChanged,
 }: Props) {
-  const { profile } = useAuth();
+  const { profile, refreshProfile } = useAuth();
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [justBooked, setJustBooked] = useState(false);
-  const [refunded, setRefunded] = useState(false);
-  const [confirmNoRefund, setConfirmNoRefund] = useState(false);
+  const [week, setWeek] = useState<WeekStatus | null>(null);
 
+  const isAdmin = profile?.role === 'admin';
+  const unlimited = isAdmin || (week?.unlimited ?? false);
+
+  // Estado semanal de la semana de ESTA clase (puede diferir de la actual)
   useEffect(() => {
-    if (open) {
-      setPhase('idle');
-      setError(null);
-      setJustBooked(false);
-      setRefunded(false);
-      setConfirmNoRefund(false);
-    }
+    if (!open || !classDate) return;
+    setPhase('idle');
+    setError(null);
+    setJustBooked(false);
+    setWeek(null);
+    let active = true;
+    void fetchWeekStatus(classDate)
+      .then((w) => active && setWeek(w))
+      .catch(() => active && setWeek(null));
+    return () => {
+      active = false;
+    };
   }, [open, slot, classDate]);
 
   if (!slot || !classDate) return null;
@@ -75,18 +84,16 @@ export default function BookingModal({
   const free = slot.capacity != null ? Math.max(0, slot.capacity - count) : null;
   const full = free !== null && free <= 0;
   const booked = Boolean(myBookingId);
-  const isAdmin = profile?.role === 'admin';
-  const unlimited = isAdmin; // los admins reservan siempre y sin gastar créditos
-  const credits = profile?.credits ?? 0;
   const active = unlimited || (profile?.membership_active ?? false);
-  // ¿La cancelación devolvería el crédito? Solo con más de 2 h de antelación.
-  const classStartMs = new Date(`${classDate}T${slot.start_time}:00`).getTime();
-  const willRefund = Date.now() < classStartMs - 2 * 60 * 60 * 1000;
+  const remaining = week ? Math.max(0, week.limit - week.used) : null;
+  const reachedLimit = !unlimited && week != null && week.used >= week.limit;
   // Ventana de reserva: solo hoy y hasta 2 días (los admins la ignoran)
   const daysAhead = daysFromTodayISO(classDate);
   const tooFar = !unlimited && daysAhead > BOOKING_WINDOW_DAYS;
   const opensOn = shiftISO(classDate, -BOOKING_WINDOW_DAYS);
-  const canBook = active && (unlimited || credits > 0) && !full && !tooFar;
+  // Para socios hace falta conocer el estado semanal antes de permitir reservar
+  const canBook =
+    active && !full && !tooFar && !reachedLimit && (unlimited || week != null);
 
   async function handleBook() {
     if (!slot || !classDate) return;
@@ -96,6 +103,7 @@ export default function BookingModal({
       await bookClass(slot.id, classDate);
       setJustBooked(true);
       setPhase('done');
+      await refreshProfile();
       onChanged();
     } catch (err) {
       setPhase('idle');
@@ -106,17 +114,12 @@ export default function BookingModal({
 
   async function handleCancel() {
     if (!myBookingId) return;
-    // Socio que perdería el crédito: pedir confirmación antes de cancelar
-    if (!unlimited && !willRefund && !confirmNoRefund) {
-      setConfirmNoRefund(true);
-      return;
-    }
     setPhase('saving');
     setError(null);
     try {
-      const wasRefunded = await cancelMyBooking(myBookingId);
-      setRefunded(wasRefunded);
+      await cancelMyBooking(myBookingId);
       setPhase('cancelled');
+      await refreshProfile();
       onChanged();
     } catch (err) {
       setPhase('idle');
@@ -185,18 +188,14 @@ export default function BookingModal({
             initial={{ scale: 0.6, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: 'spring', stiffness: 260, damping: 18 }}
-            className={`mx-auto flex h-14 w-14 items-center justify-center rounded-full ring-2 ${
-              refunded ? 'bg-accent-500/15 ring-accent-500/40' : 'bg-amber-500/15 ring-amber-500/40'
-            }`}
+            className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent-500/15 ring-2 ring-accent-500/40"
           >
-            <X className={`h-7 w-7 ${refunded ? 'text-accent-400' : 'text-amber-400'}`} />
+            <X className="h-7 w-7 text-accent-400" />
           </motion.div>
           <div>
             <p className="font-display text-base font-bold text-white">Reserva cancelada</p>
             <p className="mt-1 text-sm text-zinc-400">
-              {refunded
-                ? 'Se te ha devuelto 1 crédito.'
-                : 'Al cancelar con menos de 2 horas, no se devuelve el crédito.'}
+              Has liberado tu plaza y recuperado una clase de esta semana.
             </p>
           </div>
           <button onClick={onClose} className="btn-primary w-full">
@@ -221,89 +220,38 @@ export default function BookingModal({
             <p className="mt-1 text-sm text-zinc-400">Te esperamos en el box. 🥊</p>
           </div>
 
-          {confirmNoRefund ? (
-            /* Confirmación cuando el socio va a perder el crédito */
-            <>
-              <div className="flex items-start gap-2.5 rounded-xl border border-brand-500/40 bg-brand-500/10 p-3 text-left text-sm leading-relaxed text-brand-100">
-                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-brand-300" />
-                <span>
-                  Al cancelar la reserva con tan poca antelación{' '}
-                  <strong>no te devolveremos el crédito</strong>. ¿Estás seguro?
-                </span>
-              </div>
-              {error && <p className="text-sm text-brand-300">{error}</p>}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setConfirmNoRefund(false)}
-                  disabled={phase === 'saving'}
-                  className="btn-ghost flex-1"
-                >
-                  No, volver
-                </button>
-                <button
-                  onClick={() => void handleCancel()}
-                  disabled={phase === 'saving'}
-                  className="btn-primary flex-1"
-                >
-                  {phase === 'saving' ? 'Cancelando…' : 'Sí, cancelar'}
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              {/* Aviso de la política de cancelación (solo socios con créditos) */}
-              {!unlimited && (
-                <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left text-xs leading-relaxed text-amber-200">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-                  <span>
-                    {willRefund ? (
-                      <>
-                        Si cancelas ahora (más de 2 horas antes) <strong>recuperas tu crédito</strong>.
-                      </>
-                    ) : (
-                      <>
-                        Quedan menos de 2 horas para la clase: si cancelas,{' '}
-                        <strong>no se te devolverá el crédito</strong>.
-                      </>
-                    )}
-                  </span>
-                </div>
-              )}
-
-              {error && <p className="text-sm text-brand-300">{error}</p>}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => void handleCancel()}
-                  disabled={phase === 'saving'}
-                  className="btn-ghost flex-1 hover:!text-brand-300"
-                >
-                  {phase === 'saving' ? 'Cancelando…' : 'Cancelar reserva'}
-                </button>
-                <button onClick={onClose} className="btn-primary flex-1">
-                  Listo
-                </button>
-              </div>
-            </>
-          )}
+          {error && <p className="text-sm text-brand-300">{error}</p>}
+          <div className="flex gap-2">
+            <button
+              onClick={() => void handleCancel()}
+              disabled={phase === 'saving'}
+              className="btn-ghost flex-1 hover:!text-brand-300"
+            >
+              {phase === 'saving' ? 'Cancelando…' : 'Cancelar reserva'}
+            </button>
+            <button onClick={onClose} className="btn-primary flex-1">
+              Listo
+            </button>
+          </div>
         </div>
       ) : (
-        /* Reservar con crédito */
+        /* Reservar */
         <div className="space-y-4">
-          {/* Estado de créditos */}
+          {/* Clases de la semana */}
           <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
             <span className="inline-flex items-center gap-2 text-sm text-zinc-300">
-              <Coins className="h-4 w-4 text-amber-400" /> Tus créditos
+              <CalendarCheck className="h-4 w-4 text-accent-400" /> Clases esta semana
             </span>
             <span className="font-display text-lg font-bold text-white">
               {unlimited ? (
-                <span className="text-amber-300">∞</span>
-              ) : (
+                <span className="text-accent-300">∞</span>
+              ) : week ? (
                 <>
-                  {credits}
-                  {profile?.weekly_credits ? (
-                    <span className="text-xs font-medium text-zinc-500"> / {profile.weekly_credits}</span>
-                  ) : null}
+                  {week.used}
+                  <span className="text-xs font-medium text-zinc-500"> / {week.limit}</span>
                 </>
+              ) : (
+                <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />
               )}
             </span>
           </div>
@@ -311,45 +259,33 @@ export default function BookingModal({
           {!active ? (
             <Notice
               icon={<Lock className="h-4 w-4" />}
-              tone="warn"
               text="Tu cuenta está inactiva. Ponte al día con el pago en el box para poder reservar."
             />
           ) : tooFar ? (
             <Notice
               icon={<CalendarClock className="h-4 w-4" />}
-              tone="warn"
               text={`Todavía no puedes reservar esta clase. Las reservas se abren 2 días antes: a partir del ${formatDateES(opensOn)}.`}
             />
-          ) : credits <= 0 ? (
+          ) : reachedLimit ? (
             <Notice
-              icon={<Coins className="h-4 w-4" />}
-              tone="warn"
-              text="No te quedan créditos esta semana. Se renuevan automáticamente cada semana."
+              icon={<AlertTriangle className="h-4 w-4" />}
+              text={`Has alcanzado tu límite de ${week?.limit} clases por semana. Cancela alguna reserva de esta semana o espera a la siguiente.`}
             />
           ) : full ? (
             <Notice
               icon={<Users className="h-4 w-4" />}
-              tone="warn"
               text="Esta sesión está completa. Prueba con otro horario."
             />
           ) : unlimited ? (
             <p className="text-center text-xs text-zinc-500">
-              Como administrador puedes reservar cualquier clase, sin gastar créditos.
+              Como administrador puedes reservar cualquier clase, sin límite semanal.
             </p>
           ) : (
-            <div className="space-y-2">
-              <p className="text-center text-xs text-zinc-500">
-                Reservar esta clase usará <span className="font-semibold text-zinc-300">1 crédito</span>.
-              </p>
-              <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-                <span>
-                  <strong>Importante:</strong> solo se devuelve el crédito si cancelas con{' '}
-                  <strong>más de 2 horas</strong> de antelación. Con menos de 2 horas, perderás el
-                  crédito.
-                </span>
-              </div>
-            </div>
+            <p className="text-center text-xs text-zinc-500">
+              Reservar esta clase usará{' '}
+              <span className="font-semibold text-zinc-300">1 de tus {week?.limit} clases</span> de la
+              semana{remaining != null ? ` (te quedarían ${Math.max(0, remaining - 1)})` : ''}.
+            </p>
           )}
 
           {error && <p className="text-center text-sm text-brand-300">{error}</p>}
@@ -364,7 +300,7 @@ export default function BookingModal({
               className="btn-primary flex-1"
             >
               <Ticket className="h-4 w-4" />
-              {phase === 'saving' ? 'Reservando…' : 'Reservar (1 crédito)'}
+              {phase === 'saving' ? 'Reservando…' : 'Reservar plaza'}
             </button>
           </div>
         </div>
@@ -373,21 +309,9 @@ export default function BookingModal({
   );
 }
 
-function Notice({
-  icon,
-  text,
-  tone,
-}: {
-  icon: React.ReactNode;
-  text: string;
-  tone: 'warn';
-}) {
-  const cls =
-    tone === 'warn'
-      ? 'border-amber-500/20 bg-amber-500/10 text-amber-300'
-      : 'border-white/10 bg-white/[0.03] text-zinc-300';
+function Notice({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
-    <div className={`flex items-start gap-2.5 rounded-xl border p-3 text-xs leading-relaxed ${cls}`}>
+    <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-300">
       <span className="mt-0.5 shrink-0">{icon}</span>
       <span>{text}</span>
     </div>

@@ -1,16 +1,17 @@
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Coins, LogOut, ShieldCheck } from 'lucide-react';
+import { CalendarCheck, LogOut, ShieldCheck } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '../lib/auth';
 import { memberFullName } from '../lib/types';
 
 export default function Header() {
   const { pathname } = useLocation();
-  const { isAdmin, profile, signOut } = useAuth();
+  const { isAdmin, profile, weekStatus, signOut } = useAuth();
 
   const firstName = profile?.first_name || memberFullName(profile ?? { first_name: null, last_name: null });
-  const showCredits = Boolean(profile && (isAdmin || profile.membership_active));
+  const showWeek = Boolean(profile && weekStatus && (isAdmin || profile.membership_active));
+  const remaining = weekStatus ? Math.max(0, weekStatus.limit - weekStatus.used) : 0;
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/5 bg-ink-950/80 backdrop-blur-xl">
@@ -45,20 +46,22 @@ export default function Header() {
               Horarios
             </Link>
           )}
-          {showCredits && (
+          {showWeek && (
             <span
-              className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-300"
-              title={isAdmin ? 'Créditos ilimitados' : 'Créditos disponibles esta semana'}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-accent-500/25 bg-accent-500/10 px-3 py-2 text-sm font-semibold text-accent-300"
+              title={
+                weekStatus!.unlimited
+                  ? 'Reservas ilimitadas'
+                  : 'Clases que te quedan esta semana'
+              }
             >
-              <Coins className="h-4 w-4" />
-              {isAdmin ? (
+              <CalendarCheck className="h-4 w-4" />
+              {weekStatus!.unlimited ? (
                 '∞'
               ) : (
                 <>
-                  {profile!.credits}
-                  {profile!.weekly_credits ? (
-                    <span className="text-xs font-medium text-amber-400/70">/{profile!.weekly_credits}</span>
-                  ) : null}
+                  {remaining}
+                  <span className="text-xs font-medium text-accent-400/70">/{weekStatus!.limit}</span>
                 </>
               )}
             </span>

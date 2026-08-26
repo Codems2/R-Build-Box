@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { DEMO_CLASS_TYPES, DEMO_SLOTS } from './demoData';
 import type {
+  AppSettings,
   Booking,
   BookingCounts,
   ClassType,
@@ -8,12 +9,15 @@ import type {
   Member,
   MemberInput,
   MyBookingRow,
-  Plan,
-  PlanInput,
   ScheduleSlot,
   SlotInput,
+  WeekStatus,
 } from './types';
 import { countKey } from './types';
+import { mondayOfWeekISO, shiftISO, todayISO } from './dates';
+
+const LS_SETTINGS = 'rmbox_settings_v1';
+const DEFAULT_SETTINGS: AppSettings = { weekly_class_limit: 3 };
 
 const LS_SLOTS = 'rmbox_slots_v1';
 const LS_TYPES = 'rmbox_class_types_v1';
@@ -171,7 +175,7 @@ export async function deleteSlot(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Reservas por créditos (vinculadas al socio)
+// Reservas (vinculadas al socio, con límite de clases por semana)
 // ---------------------------------------------------------------------------
 
 export class BookingError extends Error {}
@@ -183,7 +187,7 @@ const BOOKING_ERROR_MESSAGES: Record<string, string> = {
   DATE_MISMATCH: 'La fecha no corresponde a esta clase.',
   SLOT_NOT_FOUND: 'Esta clase ya no está disponible.',
   MEMBERSHIP_INACTIVE: 'Tu cuenta está inactiva. Ponte al día con el pago para reservar.',
-  NO_CREDITS: 'No te quedan créditos esta semana.',
+  WEEKLY_LIMIT: 'Has alcanzado tu límite de clases de esta semana.',
   NOT_AUTHENTICATED: 'Inicia sesión para reservar.',
   NOT_FOUND: 'No se encontró la reserva.',
   TOO_FAR: 'Todavía no puedes reservar esta clase. Las reservas se abren 2 días antes.',
@@ -237,17 +241,17 @@ export async function fetchMyBookings(): Promise<MyBookingRow[]> {
     .map((b) => ({ id: b.id, slot_id: b.slot_id, class_date: b.class_date }));
 }
 
-/** Reserva una clase gastando 1 crédito. Devuelve los créditos restantes. */
-export async function bookClass(slotId: string, classDate: string): Promise<number> {
+/** Reserva una clase (consume un cupo de la semana). */
+export async function bookClass(slotId: string, classDate: string): Promise<void> {
   if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase.rpc('book_class', {
+    const { error } = await supabase.rpc('book_class', {
       p_slot_id: slotId,
       p_class_date: classDate,
     });
     if (error) throw toBookingError(error.message);
-    return (data as { credits_left: number }).credits_left;
+    return;
   }
-  // Demo: reserva local sin control real de créditos
+  // Demo: reserva local sin control real del límite semanal
   const bookings = readLS<Booking[]>(LS_BOOKINGS, []);
   if (bookings.some((b) => b.slot_id === slotId && b.class_date === classDate)) {
     throw new BookingError(BOOKING_ERROR_MESSAGES.ALREADY_BOOKED);
@@ -256,22 +260,37 @@ export async function bookClass(slotId: string, classDate: string): Promise<numb
     ...bookings,
     { id: newId(), slot_id: slotId, class_date: classDate, name: 'Socio Demo', contact: null },
   ]);
-  return 0;
 }
 
-/** Cancela una reserva propia. Devuelve si se reembolsó el crédito
- *  (solo con más de 2 h de antelación). */
-export async function cancelMyBooking(bookingId: string): Promise<boolean> {
+/** Cancela una reserva propia (libera la plaza y recupera cupo semanal). */
+export async function cancelMyBooking(bookingId: string): Promise<void> {
   if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase.rpc('cancel_my_booking', { p_booking_id: bookingId });
+    const { error } = await supabase.rpc('cancel_my_booking', { p_booking_id: bookingId });
     if (error) throw toBookingError(error.message);
-    return Boolean((data as { refunded?: boolean })?.refunded);
+    return;
   }
   writeLS(
     LS_BOOKINGS,
     readLS<Booking[]>(LS_BOOKINGS, []).filter((b) => b.id !== bookingId),
   );
-  return true;
+}
+
+/** Estado semanal del socio: clases usadas / límite. `refISO` = cualquier
+ *  fecha de la semana objetivo (por defecto, la semana actual). */
+export async function fetchWeekStatus(refISO?: string): Promise<WeekStatus> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.rpc('my_week_status', { p_ref: refISO ?? null });
+    if (error) throw error;
+    const d = data as { used: number; limit: number; unlimited: boolean };
+    return { used: Number(d.used), limit: Number(d.limit), unlimited: Boolean(d.unlimited) };
+  }
+  const limit = readLS<AppSettings>(LS_SETTINGS, DEFAULT_SETTINGS).weekly_class_limit;
+  const monday = mondayOfWeekISO(refISO ?? todayISO());
+  const nextMonday = shiftISO(monday, 7);
+  const used = readLS<Booking[]>(LS_BOOKINGS, []).filter(
+    (b) => b.class_date >= monday && b.class_date < nextMonday,
+  ).length;
+  return { used, limit, unlimited: false };
 }
 
 /** Solo admin: reservas futuras de un hueco */
@@ -382,10 +401,10 @@ export async function deleteMember(userId: string): Promise<void> {
   );
 }
 
-/** Solo admin: cambiar plan / estado / créditos de un socio */
+/** Solo admin: activar / desactivar la membresía de un socio */
 export async function updateMemberMembership(
   memberId: string,
-  patch: { plan_id?: string | null; membership_active?: boolean; credits?: number },
+  patch: { membership_active?: boolean },
 ): Promise<void> {
   if (isSupabaseConfigured && supabase) {
     const { error } = await supabase.from('profiles').update(patch).eq('id', memberId);
@@ -401,61 +420,32 @@ export async function updateMemberMembership(
 }
 
 // ---------------------------------------------------------------------------
-// Planes (solo admin gestiona; los socios los leen)
+// Ajustes de la app (solo admin edita; los socios los leen)
 // ---------------------------------------------------------------------------
 
-const DEMO_PLANS: Plan[] = [
-  { id: 'p-basic', name: 'Básico', weekly_credits: 2, price: 29.9, description: '2 clases/semana' },
-  { id: 'p-pro', name: 'Pro', weekly_credits: 4, price: 44.9, description: '4 clases/semana' },
-  { id: 'p-full', name: 'Ilimitado', weekly_credits: 7, price: 59.9, description: 'Cada día' },
-];
-
-export async function fetchPlans(): Promise<Plan[]> {
+export async function fetchAppSettings(): Promise<AppSettings> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase
-      .from('plans')
-      .select('*')
-      .order('weekly_credits');
+      .from('app_settings')
+      .select('weekly_class_limit')
+      .eq('id', true)
+      .single();
     if (error) throw error;
-    return data as Plan[];
+    return { weekly_class_limit: Number((data as { weekly_class_limit: number }).weekly_class_limit) };
   }
-  return readLS<Plan[]>('rmbox_plans_v1', DEMO_PLANS);
+  return readLS<AppSettings>(LS_SETTINGS, DEFAULT_SETTINGS);
 }
 
-export async function createPlan(input: PlanInput): Promise<void> {
+export async function updateAppSettings(patch: AppSettings): Promise<void> {
   if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.from('plans').insert(input);
+    const { error } = await supabase
+      .from('app_settings')
+      .update({ weekly_class_limit: patch.weekly_class_limit, updated_at: new Date().toISOString() })
+      .eq('id', true);
     if (error) throw error;
     return;
   }
-  writeLS('rmbox_plans_v1', [
-    ...readLS<Plan[]>('rmbox_plans_v1', DEMO_PLANS),
-    { ...input, id: newId() },
-  ]);
-}
-
-export async function updatePlan(id: string, input: PlanInput): Promise<void> {
-  if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.from('plans').update(input).eq('id', id);
-    if (error) throw error;
-    return;
-  }
-  writeLS(
-    'rmbox_plans_v1',
-    readLS<Plan[]>('rmbox_plans_v1', DEMO_PLANS).map((p) => (p.id === id ? { ...p, ...input } : p)),
-  );
-}
-
-export async function deletePlan(id: string): Promise<void> {
-  if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.from('plans').delete().eq('id', id);
-    if (error) throw error;
-    return;
-  }
-  writeLS(
-    'rmbox_plans_v1',
-    readLS<Plan[]>('rmbox_plans_v1', DEMO_PLANS).filter((p) => p.id !== id),
-  );
+  writeLS(LS_SETTINGS, patch);
 }
 
 /** Extrae el mensaje de error del cuerpo JSON de una Edge Function */
