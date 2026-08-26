@@ -655,6 +655,20 @@ export async function getInvoiceUrl(path: string): Promise<string> {
   return path;
 }
 
+/** Descarga el contenido de una factura (para empaquetar en ZIP). */
+export async function downloadInvoiceBytes(path: string): Promise<Uint8Array> {
+  if (path.startsWith('data:')) {
+    const blob = await (await fetch(path)).blob(); // demo
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.storage.from('invoices').download(path);
+    if (error || !data) throw new Error('No se pudo descargar una factura.');
+    return new Uint8Array(await data.arrayBuffer());
+  }
+  throw new Error('No se pudo descargar la factura.');
+}
+
 /** Borra una factura del bucket (al eliminar o sustituir el adjunto). */
 export async function deleteInvoice(path: string): Promise<void> {
   if (path.startsWith('data:')) return; // demo

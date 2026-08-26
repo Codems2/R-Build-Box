@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Download,
   FileText,
   Loader2,
   Paperclip,
@@ -18,12 +19,14 @@ import {
   Wallet,
   X,
 } from 'lucide-react';
+import { zipSync } from 'fflate';
 import Modal from '../Modal';
 import FinanceChart, { type MonthDatum } from './FinanceChart';
 import {
   createFinanceEntry,
   deleteFinanceEntry,
   deleteInvoice,
+  downloadInvoiceBytes,
   fetchFinanceEntries,
   fetchMemberIncome,
   getInvoiceUrl,
@@ -78,6 +81,7 @@ export default function FinanceManager() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<FinanceEntry | null>(null);
+  const [downloadOpen, setDownloadOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -157,9 +161,19 @@ export default function FinanceManager() {
     <section>
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="font-display text-lg font-bold text-white">Ingresos y gastos</h2>
-        <button onClick={() => setCreating(true)} className="btn-primary !px-3.5 !py-2 text-xs">
-          <Plus className="h-4 w-4" /> Añadir
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setDownloadOpen(true)}
+            className="btn-ghost !px-3 !py-2 text-xs"
+            title="Descargar facturas del mes"
+          >
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">Facturas</span>
+          </button>
+          <button onClick={() => setCreating(true)} className="btn-primary !px-3.5 !py-2 text-xs">
+            <Plus className="h-4 w-4" /> Añadir
+          </button>
+        </div>
       </div>
 
       {/* Selector de mes */}
@@ -365,7 +379,165 @@ export default function FinanceManager() {
         }}
         onSaved={load}
       />
+      <InvoicesDownloadModal
+        open={downloadOpen}
+        defaultYm={ym}
+        onClose={() => setDownloadOpen(false)}
+      />
     </section>
+  );
+}
+
+/** Extensión del archivo a partir de su ruta (o del data URL en demo) */
+function invoiceExt(path: string): string {
+  if (path.startsWith('data:')) {
+    const mime = path.slice(5, path.indexOf(';'));
+    const map: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/heic': 'heic',
+      'image/heif': 'heif',
+      'application/pdf': 'pdf',
+    };
+    return map[mime] ?? 'bin';
+  }
+  const ext = (path.split('.').pop() ?? '').toLowerCase();
+  return ext && ext.length <= 5 ? ext : 'bin';
+}
+
+function monthNameOf(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('es-ES', { month: 'long' });
+}
+
+function InvoicesDownloadModal({
+  open,
+  defaultYm,
+  onClose,
+}: {
+  open: boolean;
+  defaultYm: string;
+  onClose: () => void;
+}) {
+  const [ym, setYm] = useState(defaultYm);
+  const [invoices, setInvoices] = useState<FinanceEntry[] | null>(null);
+  const [zipping, setZipping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setYm(defaultYm);
+      setError(null);
+    }
+  }, [open, defaultYm]);
+
+  // Gastos con factura del mes elegido
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    setInvoices(null);
+    const { from, to } = monthRange(ym);
+    fetchFinanceEntries(from, to)
+      .then((all) => {
+        if (active) setInvoices(all.filter((e) => e.kind === 'expense' && e.invoice_path));
+      })
+      .catch(() => active && setError('No se pudieron consultar las facturas.'));
+    return () => {
+      active = false;
+    };
+  }, [open, ym]);
+
+  async function handleDownload() {
+    if (!invoices || invoices.length === 0) return;
+    setZipping(true);
+    setError(null);
+    try {
+      const files: Record<string, Uint8Array> = {};
+      for (const e of invoices) {
+        const bytes = await downloadInvoiceBytes(e.invoice_path!);
+        const day = e.entry_date.slice(8, 10);
+        const concept = e.concept
+          .normalize('NFD')
+          .replace(/[̀-ͯ]/g, '')
+          .replace(/[^\w\s-]/g, '')
+          .trim()
+          .replace(/\s+/g, '_')
+          .slice(0, 40) || 'factura';
+        let name = `${day}_${concept}.${invoiceExt(e.invoice_path!)}`;
+        let i = 2;
+        while (files[name]) {
+          name = `${day}_${concept}_${i}.${invoiceExt(e.invoice_path!)}`;
+          i += 1;
+        }
+        files[name] = bytes;
+      }
+      const zipped = zipSync(files);
+      const blob = new Blob([zipped.buffer as ArrayBuffer], { type: 'application/zip' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `facturas_box_${monthNameOf(ym)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      onClose();
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'No se pudo generar el ZIP.');
+    } finally {
+      setZipping(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Descargar facturas">
+      <div className="space-y-4">
+        <div>
+          <label htmlFor="inv-month" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            Mes
+          </label>
+          <input
+            id="inv-month"
+            type="month"
+            className="input"
+            value={ym}
+            onChange={(e) => e.target.value && setYm(e.target.value)}
+          />
+        </div>
+
+        <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-xs text-zinc-300">
+          <Paperclip className="h-4 w-4 shrink-0 text-accent-300" />
+          {invoices === null && !error ? (
+            <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />
+          ) : (
+            <span>
+              {invoices?.length === 0
+                ? 'Este mes no hay gastos con factura adjunta.'
+                : `${invoices?.length} ${invoices?.length === 1 ? 'factura' : 'facturas'} en ${monthNameOf(ym)}.`}
+            </span>
+          )}
+        </div>
+
+        {error && <p className="text-sm text-brand-300">{error}</p>}
+
+        <div className="flex gap-2 pt-1">
+          <button type="button" onClick={onClose} className="btn-ghost flex-1">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleDownload()}
+            disabled={zipping || !invoices || invoices.length === 0}
+            className="btn-primary flex-1"
+          >
+            <Download className="h-4 w-4" />
+            {zipping ? 'Preparando…' : 'Descargar ZIP'}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
