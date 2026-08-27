@@ -194,6 +194,9 @@ const BOOKING_ERROR_MESSAGES: Record<string, string> = {
   SLOT_NOT_FOUND: 'Esta clase ya no está disponible.',
   MEMBERSHIP_INACTIVE: 'Tu cuenta está inactiva. Ponte al día con el pago para reservar.',
   WEEKLY_LIMIT: 'Has alcanzado tu límite de clases de esta semana.',
+  NOT_ADMIN: 'Solo un administrador puede hacer esto.',
+  BAD_NAME: 'Escribe el nombre del invitado.',
+  BAD_CONTACT: 'El teléfono es demasiado largo.',
   NOT_AUTHENTICATED: 'Inicia sesión para reservar.',
   NOT_FOUND: 'No se encontró la reserva.',
   TOO_FAR: 'Todavía no puedes reservar esta clase. Las reservas se abren 2 días antes.',
@@ -283,6 +286,30 @@ export async function cancelMyBooking(bookingId: string): Promise<boolean> {
     readLS<Booking[]>(LS_BOOKINGS, []).filter((b) => b.id !== bookingId),
   );
   return false;
+}
+
+/** Solo admin: apunta a un cliente invitado (sin cuenta) a una sesión. */
+export async function bookGuest(
+  slotId: string,
+  classDate: string,
+  name: string,
+  contact: string | null,
+): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.rpc('book_guest', {
+      p_slot_id: slotId,
+      p_class_date: classDate,
+      p_name: name,
+      p_contact: contact,
+    });
+    if (error) throw toBookingError(error.message);
+    return;
+  }
+  const bookings = readLS<Booking[]>(LS_BOOKINGS, []);
+  writeLS(LS_BOOKINGS, [
+    ...bookings,
+    { id: newId(), slot_id: slotId, class_date: classDate, name, contact },
+  ]);
 }
 
 /** Estado semanal del socio: clases usadas / límite. `refISO` = cualquier
@@ -412,6 +439,22 @@ export async function deleteMember(userId: string): Promise<void> {
   writeLS(
     LS_MEMBERS,
     readLS<Member[]>(LS_MEMBERS, []).filter((m) => m.id !== userId),
+  );
+}
+
+/** Solo admin: editar los datos de contacto de un socio (nombre, teléfono). */
+export async function updateMemberProfile(
+  memberId: string,
+  patch: { first_name?: string | null; last_name?: string | null; phone?: string | null },
+): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from('profiles').update(patch).eq('id', memberId);
+    if (error) throw error;
+    return;
+  }
+  writeLS(
+    LS_MEMBERS,
+    readLS<Member[]>(LS_MEMBERS, []).map((m) => (m.id === memberId ? { ...m, ...patch } : m)),
   );
 }
 

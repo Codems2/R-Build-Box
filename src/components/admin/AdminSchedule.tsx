@@ -9,10 +9,12 @@ import {
   Plus,
   Repeat,
   Trash2,
+  UserPlus,
   Users,
 } from 'lucide-react';
 import SlotForm from './SlotForm';
 import BookingsModal from './BookingsModal';
+import GuestBookingModal from './GuestBookingModal';
 import { useSchedule } from '../../hooks/useSchedule';
 import { createSlot, deleteSlot, updateSlot } from '../../lib/api';
 import { sessionsForWeek } from '../../lib/schedule';
@@ -44,6 +46,7 @@ export default function AdminSchedule() {
   const [editing, setEditing] = useState<ScheduleSlot | null>(null);
   const [formDate, setFormDate] = useState(todayISO());
   const [viewingBookings, setViewingBookings] = useState<ScheduleSlot | null>(null);
+  const [guestFor, setGuestFor] = useState<{ slot: ScheduleSlot; date: string } | null>(null);
 
   useEffect(() => {
     const t = todayISO();
@@ -197,6 +200,9 @@ export default function AdminSchedule() {
                   <button onClick={() => setViewingBookings(slot)} className="btn-icon" aria-label="Ver apuntados" title="Ver apuntados">
                     <Users className="h-4 w-4" />
                   </button>
+                  <button onClick={() => setGuestFor({ slot, date: activeDate })} className="btn-icon !text-accent-300 hover:!text-accent-200" aria-label="Reservar invitado" title="Reservar invitado">
+                    <UserPlus className="h-4 w-4" />
+                  </button>
                   <button onClick={() => void toggleActive(slot)} className="btn-icon" aria-label={slot.is_active ? 'Ocultar' : 'Mostrar'} title={slot.is_active ? 'Ocultar' : 'Mostrar'}>
                     {slot.is_active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                   </button>
@@ -269,6 +275,13 @@ export default function AdminSchedule() {
         open={viewingBookings !== null}
         onClose={() => setViewingBookings(null)}
         slot={viewingBookings}
+        classTypes={classTypes}
+      />
+      <GuestBookingModal
+        open={guestFor !== null}
+        onClose={() => setGuestFor(null)}
+        slot={guestFor?.slot ?? null}
+        classDate={guestFor?.date ?? null}
         classTypes={classTypes}
       />
     </section>

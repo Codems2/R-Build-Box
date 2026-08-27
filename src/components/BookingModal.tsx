@@ -8,6 +8,7 @@ import {
   Clock,
   Loader2,
   Lock,
+  ShieldCheck,
   Ticket,
   Users,
   X,
@@ -292,6 +293,21 @@ export default function BookingModal({
               </div>
             </>
           )}
+        </div>
+      ) : isAdmin ? (
+        /* Admin: no reserva plazas para sí; se derivan los invitados al panel */
+        <div className="space-y-4">
+          <div className="flex items-start gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] p-3.5 text-xs leading-relaxed text-zinc-300">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-300" />
+            <span>
+              Como administrador no reservas plazas para ti. Para apuntar a un{' '}
+              <strong className="text-white">cliente invitado</strong> (p. ej. la primera clase
+              gratis), hazlo desde el <strong className="text-white">panel de administración → Clases</strong>.
+            </span>
+          </div>
+          <button onClick={onClose} className="btn-primary w-full">
+            Cerrar
+          </button>
         </div>
       ) : (
         /* Reservar */

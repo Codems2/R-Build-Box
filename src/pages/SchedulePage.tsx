@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CalendarX2, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { CalendarX2, ChevronLeft, ChevronRight, Loader2, Lock } from 'lucide-react';
 import SlotCard from '../components/SlotCard';
 import BookingModal from '../components/BookingModal';
 import { useSchedule } from '../hooks/useSchedule';
@@ -146,6 +146,21 @@ export default function SchedulePage() {
           Corazón de luchador · el arte de las ocho armas
         </p>
       </section>
+
+      {/* Aviso de cuenta inactiva (discreto) */}
+      {profile && !isAdmin && !profile.membership_active && (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4 flex items-start gap-2.5 rounded-2xl border border-amber-500/25 bg-amber-500/[0.07] px-4 py-3"
+        >
+          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+          <p className="text-xs leading-relaxed text-amber-200/90">
+            <span className="font-semibold text-amber-100">Tu cuenta está inactiva.</span> Puedes
+            consultar los horarios, pero para reservar clases ponte al día con el pago en el box.
+          </p>
+        </motion.div>
+      )}
 
       {/* Selector de semana */}
       <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.03] p-2">

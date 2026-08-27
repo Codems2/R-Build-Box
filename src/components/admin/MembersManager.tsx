@@ -20,6 +20,7 @@ import {
   inviteMember,
   resendInvite,
   updateMemberMembership,
+  updateMemberProfile,
 } from '../../lib/api';
 import { memberFullName, type Member, type MemberInput, type Plan } from '../../lib/types';
 
@@ -355,6 +356,9 @@ function MembershipModal({
 }) {
   const [active, setActive] = useState(false);
   const [planId, setPlanId] = useState<string | null>(null);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -362,6 +366,9 @@ function MembershipModal({
     if (member) {
       setActive(member.membership_active);
       setPlanId(member.plan_id);
+      setFirstName(member.first_name ?? '');
+      setLastName(member.last_name ?? '');
+      setPhone(member.phone ?? '');
       setError(null);
     }
   }, [member]);
@@ -373,6 +380,11 @@ function MembershipModal({
     setSaving(true);
     setError(null);
     try {
+      await updateMemberProfile(member.id, {
+        first_name: firstName.trim() || null,
+        last_name: lastName.trim() || null,
+        phone: phone.trim() || null,
+      });
       await updateMemberMembership(member.id, { membership_active: active, plan_id: planId });
       await onSaved();
       onClose();
@@ -405,6 +417,32 @@ function MembershipModal({
             {active ? 'puede reservar' : 'no puede reservar'}
           </span>
         </button>
+
+        {/* Datos de contacto (editables) */}
+        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Datos de contacto</p>
+          <div className="grid grid-cols-2 gap-2">
+            <input
+              className="input"
+              placeholder="Nombre"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+            />
+            <input
+              className="input"
+              placeholder="Apellidos"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+            />
+          </div>
+          <input
+            type="tel"
+            className="input mt-2"
+            placeholder="Teléfono"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+        </div>
 
         {/* Plan de mensualidad */}
         <div>
