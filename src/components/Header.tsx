@@ -11,7 +11,6 @@ export default function Header() {
 
   const firstName = profile?.first_name || memberFullName(profile ?? { first_name: null, last_name: null });
   const showWeek = Boolean(profile && weekStatus && (isAdmin || profile.membership_active));
-  const remaining = weekStatus ? Math.max(0, weekStatus.limit - weekStatus.used) : 0;
 
   return (
     <header className="sticky top-0 z-40 border-b border-white/5 bg-ink-950/80 backdrop-blur-xl">
@@ -52,7 +51,7 @@ export default function Header() {
               title={
                 weekStatus!.unlimited
                   ? 'Reservas ilimitadas'
-                  : 'Clases que te quedan esta semana'
+                  : 'Clases reservadas esta semana'
               }
             >
               <CalendarCheck className="h-4 w-4" />
@@ -60,7 +59,7 @@ export default function Header() {
                 '∞'
               ) : (
                 <>
-                  {remaining}
+                  {weekStatus!.used}
                   <span className="text-xs font-medium text-accent-400/70">/{weekStatus!.limit}</span>
                 </>
               )}
