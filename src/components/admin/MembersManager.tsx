@@ -15,6 +15,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import Modal from '../Modal';
+import AdaptiveActions, { type ActionItem } from '../AdaptiveActions';
 import {
   deleteMember,
   fetchAppSettings,
@@ -115,51 +116,44 @@ export default function MembersManager() {
       ) : (
         <div className="space-y-2">
           {members.map((m) => {
-            const actions =
-              m.role !== 'admin' ? (
-                <>
-                  <button
-                    onClick={() => setPaying(m)}
-                    className="btn-icon !text-accent-300 hover:!text-accent-200"
-                    aria-label="Registrar pago"
-                    title="Registrar pago (renueva un mes)"
-                  >
-                    <Euro className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => setManaging(m)}
-                    className="btn-icon"
-                    aria-label="Gestionar membresía"
-                    title="Gestionar membresía"
-                  >
-                    <SlidersHorizontal className="h-4 w-4" />
-                  </button>
-                  {!m.activated && m.email && (
-                    <button
-                      onClick={() => void handleResend(m)}
-                      disabled={busyId === m.id}
-                      className="btn-icon"
-                      aria-label="Reenviar invitación"
-                      title="Reenviar invitación"
-                    >
-                      {busyId === m.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Mail className="h-4 w-4" />
-                      )}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => void handleDelete(m)}
-                    disabled={busyId === m.id}
-                    className="btn-icon hover:!text-brand-300"
-                    aria-label="Eliminar socio"
-                    title="Eliminar socio"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </>
-              ) : null;
+            const actionItems: ActionItem[] =
+              m.role === 'admin'
+                ? []
+                : [
+                    {
+                      key: 'pay',
+                      label: 'Registrar pago',
+                      icon: Euro,
+                      onClick: () => setPaying(m),
+                      iconClassName: '!text-accent-300 hover:!text-accent-200',
+                    },
+                    {
+                      key: 'manage',
+                      label: 'Gestionar membresía',
+                      icon: SlidersHorizontal,
+                      onClick: () => setManaging(m),
+                    },
+                    ...(!m.activated && m.email
+                      ? [
+                          {
+                            key: 'resend',
+                            label: 'Reenviar invitación',
+                            icon: Mail,
+                            onClick: () => void handleResend(m),
+                            disabled: busyId === m.id,
+                            loading: busyId === m.id,
+                          } as ActionItem,
+                        ]
+                      : []),
+                    {
+                      key: 'delete',
+                      label: 'Eliminar socio',
+                      icon: Trash2,
+                      onClick: () => void handleDelete(m),
+                      danger: true,
+                      disabled: busyId === m.id,
+                    },
+                  ];
             return (
               <motion.div
                 key={m.id}
@@ -238,15 +232,8 @@ export default function MembersManager() {
                     </div>
                   )}
                   </div>
-                  {actions && (
-                    <div className="hidden shrink-0 items-center gap-1.5 sm:flex">{actions}</div>
-                  )}
+                  {actionItems.length > 0 && <AdaptiveActions items={actionItems} />}
                 </div>
-                {actions && (
-                  <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-white/[0.06] pt-2.5 sm:hidden">
-                    {actions}
-                  </div>
-                )}
               </motion.div>
             );
           })}
