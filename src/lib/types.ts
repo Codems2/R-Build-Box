@@ -101,6 +101,8 @@ export interface Member {
   membership_active: boolean;
   plan_id: string | null;
   plan_name: string | null;
+  /** Fecha hasta la que tiene pagada la mensualidad (YYYY-MM-DD) */
+  paid_until: string | null;
   created_at?: string;
 }
 

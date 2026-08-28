@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
 import {
   BadgeCheck,
+  CalendarClock,
   Clock3,
+  Euro,
   Loader2,
   Mail,
   Phone,
@@ -18,11 +20,22 @@ import {
   fetchMembers,
   fetchPlans,
   inviteMember,
+  registerPayment,
   resendInvite,
   updateMemberMembership,
   updateMemberProfile,
 } from '../../lib/api';
+import { daysFromTodayISO, formatDateES } from '../../lib/dates';
 import { memberFullName, type Member, type MemberInput, type Plan } from '../../lib/types';
+
+/** Estado de vencimiento de la mensualidad a partir de paid_until */
+function dueInfo(paidUntil: string | null) {
+  if (!paidUntil) return null;
+  const days = daysFromTodayISO(paidUntil);
+  if (days < 0) return { kind: 'expired' as const, days };
+  if (days <= 1) return { kind: 'soon' as const, days };
+  return { kind: 'ok' as const, days };
+}
 
 const EMPTY: MemberInput = { first_name: '', last_name: '', phone: '', email: '' };
 
@@ -32,6 +45,7 @@ export default function MembersManager() {
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [managing, setManaging] = useState<Member | null>(null);
+  const [paying, setPaying] = useState<Member | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -148,9 +162,42 @@ export default function MembersManager() {
                     <span className="text-[11px] text-zinc-400">
                       {m.plan_name ?? 'Cuota estándar'}
                     </span>
+                    {(() => {
+                      const due = dueInfo(m.paid_until);
+                      if (!due) return null;
+                      const cls =
+                        due.kind === 'expired'
+                          ? 'text-brand-300'
+                          : due.kind === 'soon'
+                            ? 'text-amber-300'
+                            : 'text-zinc-500';
+                      const label =
+                        due.kind === 'expired'
+                          ? 'Vencido'
+                          : due.kind === 'soon'
+                            ? due.days === 0
+                              ? 'Vence hoy'
+                              : 'Vence mañana'
+                            : `Vence ${formatDateES(m.paid_until!)}`;
+                      return (
+                        <span className={`inline-flex items-center gap-1 text-[11px] ${cls}`}>
+                          <CalendarClock className="h-3 w-3" /> {label}
+                        </span>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
+              {m.role !== 'admin' && (
+                <button
+                  onClick={() => setPaying(m)}
+                  className="btn-icon !text-accent-300 hover:!text-accent-200"
+                  aria-label="Registrar pago"
+                  title="Registrar pago (renueva un mes)"
+                >
+                  <Euro className="h-4 w-4" />
+                </button>
+              )}
               {m.role !== 'admin' && (
                 <button
                   onClick={() => setManaging(m)}
@@ -199,7 +246,152 @@ export default function MembersManager() {
         onClose={() => setManaging(null)}
         onSaved={load}
       />
+      <PaymentModal member={paying} plans={plans} onClose={() => setPaying(null)} onSaved={load} />
     </section>
+  );
+}
+
+function PaymentModal({
+  member,
+  plans,
+  onClose,
+  onSaved,
+}: {
+  member: Member | null;
+  plans: Plan[];
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [amount, setAmount] = useState('');
+  const [createIncome, setCreateIncome] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [doneUntil, setDoneUntil] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (member) {
+      const plan = plans.find((p) => p.id === member.plan_id);
+      setAmount(plan ? String(plan.monthly_price) : '');
+      setCreateIncome(true);
+      setError(null);
+      setDoneUntil(null);
+    }
+  }, [member, plans]);
+
+  if (!member) return null;
+
+  async function handlePay() {
+    if (!member) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const value = amount.trim() ? Number(amount.replace(',', '.')) : null;
+      if (value != null && (!Number.isFinite(value) || value < 0)) {
+        setError('Importe no válido.');
+        setSaving(false);
+        return;
+      }
+      const res = await registerPayment(member.id, createIncome, value);
+      setDoneUntil(res.paid_until);
+      await onSaved();
+    } catch (err) {
+      console.error(err);
+      setError('No se pudo registrar el pago. Inténtalo de nuevo.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={member !== null} onClose={onClose} title={`Registrar pago · ${memberFullName(member)}`}>
+      {doneUntil ? (
+        <div className="space-y-4 text-center">
+          <motion.div
+            initial={{ scale: 0.6, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+            className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent-500/15 ring-2 ring-accent-500/40"
+          >
+            <BadgeCheck className="h-7 w-7 text-accent-400" />
+          </motion.div>
+          <div>
+            <p className="font-display text-base font-bold text-white">Pago registrado</p>
+            <p className="mt-1 text-sm text-zinc-400">
+              Cuenta activa hasta el{' '}
+              <span className="font-medium capitalize text-zinc-200">{formatDateES(doneUntil)}</span>.
+            </p>
+          </div>
+          <button onClick={onClose} className="btn-primary w-full">
+            Listo
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-zinc-300">
+            {member.paid_until ? (
+              <>
+                Vencimiento actual:{' '}
+                <span className="font-medium capitalize text-zinc-100">{formatDateES(member.paid_until)}</span>. Al
+                registrar el pago se activa y se suma <strong className="text-white">un mes</strong>.
+              </>
+            ) : (
+              <>
+                Sin pago registrado. Al registrarlo, la cuenta queda activa{' '}
+                <strong className="text-white">un mes</strong> desde hoy.
+              </>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="pay-amount" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              Importe cobrado (€)
+            </label>
+            <input
+              id="pay-amount"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              className="input"
+              placeholder="Precio del plan / cuota estándar"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+            <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-600">
+              Déjalo vacío para usar el precio del plan del socio (o la cuota estándar).
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setCreateIncome((v) => !v)}
+            className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition ${
+              createIncome ? 'border-accent-500/40 bg-accent-500/10' : 'border-white/10 bg-white/[0.03]'
+            }`}
+          >
+            <span className="flex items-center gap-2 text-sm font-medium text-zinc-100">
+              <Euro className={`h-4 w-4 ${createIncome ? 'text-accent-400' : 'text-zinc-500'}`} />
+              Registrar el ingreso en Economía
+            </span>
+            <span className={`text-xs ${createIncome ? 'text-accent-300' : 'text-zinc-500'}`}>
+              {createIncome ? 'sí' : 'no'}
+            </span>
+          </button>
+
+          {error && <p className="text-sm text-brand-300">{error}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose} className="btn-ghost flex-1">
+              Cancelar
+            </button>
+            <button type="button" onClick={() => void handlePay()} disabled={saving} className="btn-primary flex-1">
+              <Euro className="h-4 w-4" />
+              {saving ? 'Registrando…' : 'Registrar pago'}
+            </button>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 

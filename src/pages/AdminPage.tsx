@@ -1,12 +1,15 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { CalendarDays, Loader2, Lock, Settings2, Users, Wallet } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { CalendarClock, CalendarDays, Loader2, Lock, Settings2, TriangleAlert, Users, Wallet } from 'lucide-react';
 import AdminSchedule from '../components/admin/AdminSchedule';
 import ClassTypeManager from '../components/admin/ClassTypeManager';
 import FinanceManager from '../components/admin/FinanceManager';
 import MembersManager from '../components/admin/MembersManager';
 import PlansManager from '../components/admin/PlansManager';
 import SettingsManager from '../components/admin/SettingsManager';
+import { fetchMembers } from '../lib/api';
+import { daysFromTodayISO, formatDateES } from '../lib/dates';
+import { memberFullName, type Member } from '../lib/types';
 import { useAuth } from '../lib/auth';
 import { useSchedule } from '../hooks/useSchedule';
 
@@ -62,14 +65,17 @@ function Dashboard() {
 
   return (
     <div className="pt-8 sm:pt-12">
-      <div className="mb-5">
-        <h1 className="font-display text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
-          Panel de administración
-        </h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          Configura clases, horarios y gestiona a los socios del box.
-          {demoMode && <span className="ml-1 text-accent-400">Modo demo: cambios locales.</span>}
-        </p>
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
+            Panel de administración
+          </h1>
+          <p className="mt-1 text-sm text-zinc-400">
+            Configura clases, horarios y gestiona a los socios del box.
+            {demoMode && <span className="ml-1 text-accent-400">Modo demo: cambios locales.</span>}
+          </p>
+        </div>
+        <ExpiringSoonAlert refreshKey={tab} onGoToMembers={() => setTab('socios')} />
       </div>
 
       {/* Pestañas */}
@@ -117,6 +123,108 @@ function Dashboard() {
         {tab === 'socios' && <MembersManager />}
         {tab === 'ajustes' && <SettingsManager />}
       </motion.div>
+    </div>
+  );
+}
+
+/** Aviso de socios cuya mensualidad vence pronto (hoy o mañana). */
+function ExpiringSoonAlert({
+  refreshKey,
+  onGoToMembers,
+}: {
+  refreshKey: string;
+  onGoToMembers: () => void;
+}) {
+  const [soon, setSoon] = useState<Member[]>([]);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    fetchMembers()
+      .then((all) => {
+        if (!active) return;
+        const due = all
+          .filter((m) => m.role !== 'admin' && m.membership_active && m.paid_until)
+          .filter((m) => {
+            const d = daysFromTodayISO(m.paid_until!);
+            return d >= 0 && d <= 1;
+          })
+          .sort((a, b) => daysFromTodayISO(a.paid_until!) - daysFromTodayISO(b.paid_until!));
+        setSoon(due);
+      })
+      .catch(() => setSoon([]));
+    return () => {
+      active = false;
+    };
+  }, [refreshKey]);
+
+  if (soon.length === 0) return null;
+
+  return (
+    <div
+      className="relative shrink-0"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-200 transition hover:bg-amber-500/15"
+        aria-label="Socios con la mensualidad por vencer"
+      >
+        <TriangleAlert className="h-4 w-4 text-amber-400" />
+        <span>{soon.length}</span>
+        <span className="hidden sm:inline">por vencer</span>
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.98 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 top-full z-40 mt-2 w-72 rounded-2xl border border-white/10 bg-ink-900/95 p-3 shadow-2xl shadow-black/50 backdrop-blur"
+          >
+            <p className="mb-2 flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-amber-300">
+              <CalendarClock className="h-3.5 w-3.5" /> Mensualidad por vencer
+            </p>
+            <div className="space-y-1">
+              {soon.map((m) => {
+                const d = daysFromTodayISO(m.paid_until!);
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      setOpen(false);
+                      onGoToMembers();
+                    }}
+                    className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-white/5"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-sm text-zinc-100">
+                      {memberFullName(m)}
+                    </span>
+                    <span
+                      className={`shrink-0 text-[11px] font-medium ${d === 0 ? 'text-brand-300' : 'text-amber-300'}`}
+                    >
+                      {d === 0 ? 'Hoy' : 'Mañana'} · {formatDateES(m.paid_until!)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => {
+                setOpen(false);
+                onGoToMembers();
+              }}
+              className="mt-2 w-full rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5 text-xs font-medium text-zinc-300 transition hover:text-white"
+            >
+              Ir a Socios
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

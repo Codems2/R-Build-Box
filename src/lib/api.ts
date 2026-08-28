@@ -458,6 +458,47 @@ export async function updateMemberProfile(
   );
 }
 
+/** Solo admin: registra un pago (activa + suma un mes; ingreso opcional). */
+export async function registerPayment(
+  memberId: string,
+  createIncome: boolean,
+  amount?: number | null,
+): Promise<{ paid_until: string; income_created: boolean }> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.rpc('register_payment', {
+      p_member_id: memberId,
+      p_create_income: createIncome,
+      p_amount: amount ?? null,
+    });
+    if (error) throw error;
+    const d = data as { paid_until: string; income_created: boolean };
+    return d;
+  }
+  // Demo: mes rodante sobre localStorage + ingreso opcional
+  const members = readLS<Member[]>(LS_MEMBERS, []);
+  const m = members.find((x) => x.id === memberId);
+  const today = todayISO();
+  const base = m?.paid_until && m.paid_until > today ? m.paid_until : today;
+  const d = new Date(`${base}T00:00:00`);
+  d.setMonth(d.getMonth() + 1);
+  const paidUntil = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  writeLS(
+    LS_MEMBERS,
+    members.map((x) => (x.id === memberId ? { ...x, membership_active: true, paid_until: paidUntil } : x)),
+  );
+  let income = false;
+  const value = amount ?? readLS<Partial<AppSettings>>(LS_SETTINGS, {}).default_monthly_fee ?? 60;
+  if (createIncome && value > 0) {
+    const name = m ? memberFullNameLS(m) : 'Socio';
+    writeLS(LS_FINANCE, [
+      ...readLS<FinanceEntry[]>(LS_FINANCE, []),
+      { id: newId(), kind: 'income', concept: `Cuota · ${name}`, amount: value, entry_date: today, invoice_path: null },
+    ]);
+    income = true;
+  }
+  return { paid_until: paidUntil, income_created: income };
+}
+
 /** Solo admin: activar/desactivar la membresía o cambiar el plan de un socio */
 export async function updateMemberMembership(
   memberId: string,
