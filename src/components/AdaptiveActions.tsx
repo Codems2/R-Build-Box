@@ -92,17 +92,22 @@ export default function AdaptiveActions({
 
   return (
     <div ref={hostRef} className="relative shrink-0">
-      {/* Medidor oculto: misma pinta que los botones en línea, para saber su anchura real */}
+      {/* Medidor oculto: misma pinta que los botones en línea, para saber su
+          anchura real. Va dentro de una caja 0×0 con overflow-hidden para que
+          NUNCA aporte scroll horizontal a la página (antes, al ser absolute y
+          opacity-0, seguía ensanchando el documento en móvil). scrollWidth del
+          hijo sigue midiendo su anchura natural aunque esté recortado. */}
       <div
-        ref={measureRef}
         aria-hidden
-        className="pointer-events-none absolute left-0 top-0 -z-10 flex gap-1.5 opacity-0"
+        className="pointer-events-none absolute left-0 top-0 -z-10 h-0 w-0 overflow-hidden opacity-0"
       >
-        {items.map((it) => (
-          <span key={it.key} className="btn-icon">
-            <it.icon className="h-4 w-4" />
-          </span>
-        ))}
+        <div ref={measureRef} className="flex gap-1.5">
+          {items.map((it) => (
+            <span key={it.key} className="btn-icon">
+              <it.icon className="h-4 w-4" />
+            </span>
+          ))}
+        </div>
       </div>
 
       {collapsed ? (
