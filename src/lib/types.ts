@@ -54,6 +54,10 @@ export interface Plan {
   name: string;
   monthly_price: number;
   description: string | null;
+  /** Clases por semana del plan (null = usar el límite global) */
+  weekly_limit: number | null;
+  /** Máximo de clases al mes (null = sin tope) */
+  monthly_limit: number | null;
 }
 
 export type PlanInput = Omit<Plan, 'id'>;
@@ -76,6 +80,10 @@ export interface WeekStatus {
   courtesy_used?: number;
   /** Máximo de clases de cortesía configurado */
   courtesy_limit?: number;
+  /** Clases usadas este mes (solo si el plan tiene tope mensual) */
+  monthly_used?: number;
+  /** Tope mensual del plan (null/undefined = sin tope) */
+  monthly_limit?: number | null;
 }
 
 export type FinanceKind = 'income' | 'expense';

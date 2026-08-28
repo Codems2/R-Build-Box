@@ -86,6 +86,11 @@ export default function PlansManager() {
                 {p.description && (
                   <p className="mt-0.5 truncate text-xs text-zinc-500">{p.description}</p>
                 )}
+                <p className="mt-0.5 text-[11px] text-zinc-500">
+                  {p.weekly_limit != null ? `${p.weekly_limit}/semana` : 'Límite general'}
+                  {' · '}
+                  {p.monthly_limit != null ? `${p.monthly_limit}/mes` : 'Sin tope mensual'}
+                </p>
               </div>
               <p className="shrink-0 font-display text-sm font-bold text-white">
                 {EUR.format(p.monthly_price)}
@@ -137,6 +142,8 @@ function PlanModal({
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
+  const [weeklyLimit, setWeeklyLimit] = useState('');
+  const [monthlyLimit, setMonthlyLimit] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -145,6 +152,8 @@ function PlanModal({
       setName(plan?.name ?? '');
       setPrice(plan ? String(plan.monthly_price) : '');
       setDescription(plan?.description ?? '');
+      setWeeklyLimit(plan?.weekly_limit != null ? String(plan.weekly_limit) : '');
+      setMonthlyLimit(plan?.monthly_limit != null ? String(plan.monthly_limit) : '');
       setError(null);
     }
   }, [open, plan]);
@@ -156,6 +165,16 @@ function PlanModal({
       setError('Introduce un precio válido.');
       return;
     }
+    const weekly = weeklyLimit.trim() ? Math.round(Number(weeklyLimit)) : null;
+    const monthly = monthlyLimit.trim() ? Math.round(Number(monthlyLimit)) : null;
+    if (weekly != null && (!Number.isFinite(weekly) || weekly < 1 || weekly > 50)) {
+      setError('Clases por semana: deja vacío o pon un número entre 1 y 50.');
+      return;
+    }
+    if (monthly != null && (!Number.isFinite(monthly) || monthly < 1 || monthly > 500)) {
+      setError('Clases máximas al mes: deja vacío o pon un número entre 1 y 500.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -163,6 +182,8 @@ function PlanModal({
         name: name.trim(),
         monthly_price: Math.round(value * 100) / 100,
         description: description.trim() || null,
+        weekly_limit: weekly,
+        monthly_limit: monthly,
       };
       if (plan) await updatePlan(plan.id, input);
       else await createPlan(input);
@@ -210,6 +231,44 @@ function PlanModal({
             onChange={(e) => setPrice(e.target.value)}
           />
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label htmlFor="plan-weekly" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              Clases / semana
+            </label>
+            <input
+              id="plan-weekly"
+              type="number"
+              inputMode="numeric"
+              min="1"
+              max="50"
+              className="input"
+              placeholder="Global"
+              value={weeklyLimit}
+              onChange={(e) => setWeeklyLimit(e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="plan-monthly" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              Clases máx. / mes
+            </label>
+            <input
+              id="plan-monthly"
+              type="number"
+              inputMode="numeric"
+              min="1"
+              max="500"
+              className="input"
+              placeholder="Sin tope"
+              value={monthlyLimit}
+              onChange={(e) => setMonthlyLimit(e.target.value)}
+            />
+          </div>
+        </div>
+        <p className="-mt-2 text-[11px] leading-relaxed text-zinc-600">
+          «Clases / semana»: déjalo vacío para usar el límite general de «Configuración». «Clases
+          máx. / mes»: vacío = sin tope mensual. Ej. plan atletas: 7 y 30.
+        </p>
         <div>
           <label htmlFor="plan-desc" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
             Descripción

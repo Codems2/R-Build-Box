@@ -113,13 +113,16 @@ export default function BookingModal({
   const classStartMs = new Date(`${classDate}T${slot.start_time}:00`).getTime();
   const willPenalize = !unlimited && Date.now() >= classStartMs - 60 * 60 * 1000;
   const reachedLimit = !unlimited && week != null && week.used >= week.limit;
+  const monthlyLimit = week?.monthly_limit ?? null;
+  const monthlyUsed = week?.monthly_used ?? 0;
+  const reachedMonthly = !unlimited && monthlyLimit != null && monthlyUsed >= monthlyLimit;
   // Ventana de reserva: solo hoy y hasta 2 días (los admins la ignoran)
   const daysAhead = daysFromTodayISO(classDate);
   const tooFar = !unlimited && daysAhead > BOOKING_WINDOW_DAYS;
   const opensOn = shiftISO(classDate, -BOOKING_WINDOW_DAYS);
   // Para socios hace falta conocer el estado semanal antes de permitir reservar
   const canBook =
-    active && !full && !tooFar && !reachedLimit && (unlimited || week != null);
+    active && !full && !tooFar && !reachedLimit && !reachedMonthly && (unlimited || week != null);
 
   async function handleBook() {
     if (!slot || !classDate) return;
@@ -349,6 +352,18 @@ export default function BookingModal({
             </span>
           </div>
 
+          {!unlimited && monthlyLimit != null && (
+            <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+              <span className="inline-flex items-center gap-2 text-sm text-zinc-300">
+                <CalendarCheck className="h-4 w-4 text-accent-400" /> Clases este mes
+              </span>
+              <span className="font-display text-lg font-bold text-white">
+                {monthlyUsed}
+                <span className="text-xs font-medium text-zinc-500"> / {monthlyLimit}</span>
+              </span>
+            </div>
+          )}
+
           {!active ? (
             <Notice
               icon={<Lock className="h-4 w-4" />}
@@ -367,6 +382,11 @@ export default function BookingModal({
             <Notice
               icon={<AlertTriangle className="h-4 w-4" />}
               text={`Has alcanzado tu límite de ${week?.limit} clases por semana. Cancela alguna reserva de esta semana o espera a la siguiente.`}
+            />
+          ) : reachedMonthly ? (
+            <Notice
+              icon={<AlertTriangle className="h-4 w-4" />}
+              text={`Has alcanzado el máximo de ${monthlyLimit} clases de este mes de tu plan. Podrás reservar de nuevo el mes que viene.`}
             />
           ) : full ? (
             <Notice

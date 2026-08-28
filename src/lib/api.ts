@@ -194,6 +194,7 @@ const BOOKING_ERROR_MESSAGES: Record<string, string> = {
   SLOT_NOT_FOUND: 'Esta clase ya no está disponible.',
   MEMBERSHIP_INACTIVE: 'Tu cuenta está inactiva. Ponte al día con el pago para reservar.',
   WEEKLY_LIMIT: 'Has alcanzado tu límite de clases de esta semana.',
+  MONTHLY_LIMIT: 'Has alcanzado el máximo de clases de este mes de tu plan.',
   NOT_ADMIN: 'Solo un administrador puede hacer esto.',
   BAD_NAME: 'Escribe el nombre del invitado.',
   BAD_CONTACT: 'El teléfono es demasiado largo.',
@@ -324,6 +325,8 @@ export async function fetchWeekStatus(refISO?: string): Promise<WeekStatus> {
       unlimited: boolean;
       courtesy_used?: number;
       courtesy_limit?: number;
+      monthly_used?: number;
+      monthly_limit?: number | null;
     };
     return {
       used: Number(d.used),
@@ -331,6 +334,8 @@ export async function fetchWeekStatus(refISO?: string): Promise<WeekStatus> {
       unlimited: Boolean(d.unlimited),
       courtesy_used: d.courtesy_used != null ? Number(d.courtesy_used) : 0,
       courtesy_limit: d.courtesy_limit != null ? Number(d.courtesy_limit) : 0,
+      monthly_used: d.monthly_used != null ? Number(d.monthly_used) : 0,
+      monthly_limit: d.monthly_limit != null ? Number(d.monthly_limit) : null,
     };
   }
   const settings = { ...DEFAULT_SETTINGS, ...readLS<Partial<AppSettings>>(LS_SETTINGS, {}) };
