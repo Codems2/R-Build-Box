@@ -31,9 +31,21 @@ export default function AdaptiveActions({
   const hostRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const [collapsed, setCollapsed] = useState(false);
+  const [overflow, setOverflow] = useState(false);
+  // En móvil (pantalla pequeña) siempre se usa el menú desplegable
+  const [small, setSmall] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches,
+  );
+  const collapsed = small || overflow;
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 639px)');
+    const on = () => setSmall(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
 
   const place = () => {
     const t = triggerRef.current;
@@ -55,7 +67,7 @@ export default function AdaptiveActions({
     const check = () => {
       const natural = measure.scrollWidth; // anchura natural de las acciones en línea
       const available = row.clientWidth - reserve;
-      setCollapsed(natural > available);
+      setOverflow(natural > available);
     };
     check();
     const ro = new ResizeObserver(check);
