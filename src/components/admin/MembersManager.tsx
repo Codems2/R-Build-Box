@@ -114,18 +114,65 @@ export default function MembersManager() {
         </p>
       ) : (
         <div className="space-y-2">
-          {members.map((m) => (
-            <motion.div
-              key={m.id}
-              layout
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="card flex min-w-0 items-center gap-3 p-3.5"
-            >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-600/15 font-display text-xs font-bold text-brand-300 ring-1 ring-brand-500/20">
-                #{m.member_no}
-              </span>
-              <div className="min-w-0 flex-1">
+          {members.map((m) => {
+            const actions =
+              m.role !== 'admin' ? (
+                <>
+                  <button
+                    onClick={() => setPaying(m)}
+                    className="btn-icon !text-accent-300 hover:!text-accent-200"
+                    aria-label="Registrar pago"
+                    title="Registrar pago (renueva un mes)"
+                  >
+                    <Euro className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setManaging(m)}
+                    className="btn-icon"
+                    aria-label="Gestionar membresía"
+                    title="Gestionar membresía"
+                  >
+                    <SlidersHorizontal className="h-4 w-4" />
+                  </button>
+                  {!m.activated && m.email && (
+                    <button
+                      onClick={() => void handleResend(m)}
+                      disabled={busyId === m.id}
+                      className="btn-icon"
+                      aria-label="Reenviar invitación"
+                      title="Reenviar invitación"
+                    >
+                      {busyId === m.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Mail className="h-4 w-4" />
+                      )}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => void handleDelete(m)}
+                    disabled={busyId === m.id}
+                    className="btn-icon hover:!text-brand-300"
+                    aria-label="Eliminar socio"
+                    title="Eliminar socio"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </>
+              ) : null;
+            return (
+              <motion.div
+                key={m.id}
+                layout
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="card min-w-0 p-3.5"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-600/15 font-display text-xs font-bold text-brand-300 ring-1 ring-brand-500/20">
+                    #{m.member_no}
+                  </span>
+                  <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <p className="truncate text-sm font-semibold text-white">{memberFullName(m)}</p>
                   {m.role === 'admin' && (
@@ -186,59 +233,23 @@ export default function MembersManager() {
                         <span className={`inline-flex items-center gap-1 text-[11px] ${cls}`}>
                           <CalendarClock className="h-3 w-3" /> {label}
                         </span>
-                      );
-                    })()}
+                        );
+                      })()}
+                    </div>
+                  )}
+                  </div>
+                  {actions && (
+                    <div className="hidden shrink-0 items-center gap-1.5 sm:flex">{actions}</div>
+                  )}
+                </div>
+                {actions && (
+                  <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-white/[0.06] pt-2.5 sm:hidden">
+                    {actions}
                   </div>
                 )}
-              </div>
-              {m.role !== 'admin' && (
-                <button
-                  onClick={() => setPaying(m)}
-                  className="btn-icon !text-accent-300 hover:!text-accent-200"
-                  aria-label="Registrar pago"
-                  title="Registrar pago (renueva un mes)"
-                >
-                  <Euro className="h-4 w-4" />
-                </button>
-              )}
-              {m.role !== 'admin' && (
-                <button
-                  onClick={() => setManaging(m)}
-                  className="btn-icon"
-                  aria-label="Gestionar membresía"
-                  title="Gestionar membresía"
-                >
-                  <SlidersHorizontal className="h-4 w-4" />
-                </button>
-              )}
-              {!m.activated && m.email && (
-                <button
-                  onClick={() => void handleResend(m)}
-                  disabled={busyId === m.id}
-                  className="btn-icon"
-                  aria-label="Reenviar invitación"
-                  title="Reenviar invitación"
-                >
-                  {busyId === m.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Mail className="h-4 w-4" />
-                  )}
-                </button>
-              )}
-              {m.role !== 'admin' && (
-                <button
-                  onClick={() => void handleDelete(m)}
-                  disabled={busyId === m.id}
-                  className="btn-icon hover:!text-brand-300"
-                  aria-label="Eliminar socio"
-                  title="Eliminar socio"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              )}
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </div>
       )}
 
