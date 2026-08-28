@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { zipSync } from 'fflate';
 import Modal from '../Modal';
+import AdaptiveActions, { type ActionItem } from '../AdaptiveActions';
 import FinanceChart, { type MonthDatum } from './FinanceChart';
 import {
   createFinanceEntry,
@@ -334,37 +335,31 @@ export default function FinanceManager() {
                 {e.kind === 'income' ? '+' : '−'}
                 {EUR.format(e.amount)}
               </p>
-              {e.invoice_path && (
-                <button
-                  onClick={() => void openInvoice(e)}
-                  className="btn-icon !text-accent-300 hover:!text-accent-200"
-                  aria-label="Ver factura"
-                  title="Ver factura"
-                >
-                  <Paperclip className="h-4 w-4" />
-                </button>
-              )}
-              <button
-                onClick={() => setEditing(e)}
-                className="btn-icon"
-                aria-label="Editar movimiento"
-                title="Editar"
-              >
-                <Pencil className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => void handleDelete(e)}
-                disabled={busyId === e.id}
-                className="btn-icon hover:!text-brand-300"
-                aria-label="Eliminar movimiento"
-                title="Eliminar"
-              >
-                {busyId === e.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="h-4 w-4" />
-                )}
-              </button>
+              <AdaptiveActions
+                items={[
+                  ...(e.invoice_path
+                    ? [
+                        {
+                          key: 'invoice',
+                          label: 'Ver factura',
+                          icon: Paperclip,
+                          onClick: () => void openInvoice(e),
+                          iconClassName: '!text-accent-300 hover:!text-accent-200',
+                        } as ActionItem,
+                      ]
+                    : []),
+                  { key: 'edit', label: 'Editar', icon: Pencil, onClick: () => setEditing(e) },
+                  {
+                    key: 'delete',
+                    label: 'Eliminar',
+                    icon: Trash2,
+                    onClick: () => void handleDelete(e),
+                    danger: true,
+                    disabled: busyId === e.id,
+                    loading: busyId === e.id,
+                  },
+                ]}
+              />
             </motion.div>
           ))}
         </div>

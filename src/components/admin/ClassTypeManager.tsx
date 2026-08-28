@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import Modal from '../Modal';
+import AdaptiveActions from '../AdaptiveActions';
 import type { ClassType, ClassTypeInput } from '../../lib/types';
 import { createClassType, deleteClassType, updateClassType } from '../../lib/api';
 
@@ -112,23 +113,26 @@ export default function ClassTypeManager({ classTypes, onChanged }: Props) {
                 <p className="truncate text-xs text-zinc-500">{type.description}</p>
               )}
             </div>
-            <button
-              onClick={() => {
-                setEditing(type);
-                setOpen(true);
-              }}
-              className="btn-icon"
-              aria-label={`Editar ${type.name}`}
-            >
-              <Pencil className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => void handleDelete(type)}
-              className="btn-icon hover:!text-brand-300"
-              aria-label={`Eliminar ${type.name}`}
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            <AdaptiveActions
+              items={[
+                {
+                  key: 'edit',
+                  label: 'Editar',
+                  icon: Pencil,
+                  onClick: () => {
+                    setEditing(type);
+                    setOpen(true);
+                  },
+                },
+                {
+                  key: 'delete',
+                  label: 'Eliminar',
+                  icon: Trash2,
+                  onClick: () => void handleDelete(type),
+                  danger: true,
+                },
+              ]}
+            />
           </motion.div>
         ))}
       </div>

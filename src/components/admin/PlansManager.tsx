@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
 import { CreditCard, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import Modal from '../Modal';
+import AdaptiveActions from '../AdaptiveActions';
 import { createPlan, deletePlan, fetchPlans, updatePlan } from '../../lib/api';
 import type { Plan } from '../../lib/types';
 
@@ -90,27 +91,20 @@ export default function PlansManager() {
                 {EUR.format(p.monthly_price)}
                 <span className="text-xs font-medium text-zinc-500">/mes</span>
               </p>
-              <button
-                onClick={() => setEditing(p)}
-                className="btn-icon"
-                aria-label="Editar plan"
-                title="Editar"
-              >
-                <Pencil className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => void handleDelete(p)}
-                disabled={busyId === p.id}
-                className="btn-icon hover:!text-brand-300"
-                aria-label="Eliminar plan"
-                title="Eliminar"
-              >
-                {busyId === p.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Trash2 className="h-4 w-4" />
-                )}
-              </button>
+              <AdaptiveActions
+                items={[
+                  { key: 'edit', label: 'Editar', icon: Pencil, onClick: () => setEditing(p) },
+                  {
+                    key: 'delete',
+                    label: 'Eliminar',
+                    icon: Trash2,
+                    onClick: () => void handleDelete(p),
+                    danger: true,
+                    disabled: busyId === p.id,
+                    loading: busyId === p.id,
+                  },
+                ]}
+              />
             </motion.div>
           ))}
         </div>

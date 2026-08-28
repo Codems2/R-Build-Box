@@ -15,6 +15,7 @@ import {
 import SlotForm from './SlotForm';
 import BookingsModal from './BookingsModal';
 import GuestBookingModal from './GuestBookingModal';
+import AdaptiveActions, { type ActionItem } from '../AdaptiveActions';
 import { useSchedule } from '../../hooks/useSchedule';
 import { createSlot, deleteSlot, fetchBookingCounts, updateSlot } from '../../lib/api';
 import { sessionsForWeek } from '../../lib/schedule';
@@ -208,25 +209,24 @@ export default function AdminSchedule() {
               const kind = KIND_META[slot.kind];
               const count = counts[countKey(slot.id, activeDate)] ?? 0;
               const full = slot.capacity != null && count >= slot.capacity;
-              const actions = (
-                <>
-                  <button onClick={() => setViewingBookings(slot)} className="btn-icon" aria-label="Ver apuntados" title="Ver apuntados">
-                    <Users className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => setGuestFor({ slot, date: activeDate })} className="btn-icon !text-accent-300 hover:!text-accent-200" aria-label="Reservar invitado" title="Reservar invitado">
-                    <UserPlus className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => void toggleActive(slot)} className="btn-icon" aria-label={slot.is_active ? 'Ocultar' : 'Mostrar'} title={slot.is_active ? 'Ocultar' : 'Mostrar'}>
-                    {slot.is_active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                  </button>
-                  <button onClick={() => openEdit(slot)} className="btn-icon" aria-label="Editar">
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => void handleDelete(slot)} className="btn-icon hover:!text-brand-300" aria-label="Eliminar">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </>
-              );
+              const actionItems: ActionItem[] = [
+                { key: 'bookings', label: 'Ver apuntados', icon: Users, onClick: () => setViewingBookings(slot) },
+                {
+                  key: 'guest',
+                  label: 'Reservar invitado',
+                  icon: UserPlus,
+                  onClick: () => setGuestFor({ slot, date: activeDate }),
+                  iconClassName: '!text-accent-300 hover:!text-accent-200',
+                },
+                {
+                  key: 'toggle',
+                  label: slot.is_active ? 'Ocultar' : 'Mostrar',
+                  icon: slot.is_active ? Eye : EyeOff,
+                  onClick: () => void toggleActive(slot),
+                },
+                { key: 'edit', label: 'Editar', icon: Pencil, onClick: () => openEdit(slot) },
+                { key: 'delete', label: 'Eliminar', icon: Trash2, onClick: () => void handleDelete(slot), danger: true },
+              ];
               return (
                 <motion.div
                   key={slot.id}
@@ -281,10 +281,7 @@ export default function AdminSchedule() {
                         )}
                       </p>
                     </div>
-                    <div className="hidden items-center gap-1.5 sm:flex">{actions}</div>
-                  </div>
-                  <div className="mt-3 flex items-center justify-end gap-1.5 border-t border-white/[0.06] pt-2.5 pl-2 sm:hidden">
-                    {actions}
+                    <AdaptiveActions items={actionItems} />
                   </div>
                 </motion.div>
               );
