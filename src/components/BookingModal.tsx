@@ -6,6 +6,7 @@ import {
   CalendarClock,
   Check,
   Clock,
+  Gift,
   Loader2,
   Lock,
   ShieldCheck,
@@ -376,32 +377,34 @@ export default function BookingModal({
             <p className="text-center text-xs text-zinc-500">
               Como administrador puedes reservar cualquier clase, sin límite semanal.
             </p>
+          ) : inCourtesy ? (
+            <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">
+              <Gift className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+              <span>
+                Estás usando <strong className="text-amber-100">clases de cortesía</strong> (tu mes ha
+                vencido).
+                {typeof courtesyLeft === 'number' && (
+                  <>
+                    {' '}Al reservar esta te{' '}
+                    {Math.max(0, courtesyLeft - 1) === 1 ? 'quedará' : 'quedarán'}{' '}
+                    <strong className="text-amber-100">
+                      {Math.max(0, courtesyLeft - 1)}
+                      {typeof courtesyLimit === 'number' ? ` de ${courtesyLimit}` : ''}
+                    </strong>
+                    ;
+                  </>
+                )}{' '}
+                se restará de tu próxima mensualidad. Y si cancelas con menos de{' '}
+                <strong className="text-amber-100">1 hora</strong> de antelación, perderás esa clase.
+              </span>
+            </div>
           ) : (
             <div className="space-y-2">
-              {inCourtesy ? (
-                <p className="text-center text-xs leading-relaxed text-amber-300/90">
-                  Estás usando <strong className="text-amber-200">clases de cortesía</strong> (tu mes
-                  ha vencido).
-                  {typeof courtesyLeft === 'number' && (
-                    <>
-                      {' '}Al reservar esta te{' '}
-                      {Math.max(0, courtesyLeft - 1) === 1 ? 'quedará' : 'quedarán'}{' '}
-                      <span className="font-semibold text-amber-200">
-                        {Math.max(0, courtesyLeft - 1)}
-                        {typeof courtesyLimit === 'number' ? ` de ${courtesyLimit}` : ''}
-                      </span>
-                      .
-                    </>
-                  )}{' '}
-                  Se restará de tu próxima mensualidad.
-                </p>
-              ) : (
-                <p className="text-center text-xs text-zinc-500">
-                  Reservar esta clase usará{' '}
-                  <span className="font-semibold text-zinc-300">1 de tus {week?.limit} clases</span> de la
-                  semana{remaining != null ? ` (te quedarían ${Math.max(0, remaining - 1)})` : ''}.
-                </p>
-              )}
+              <p className="text-center text-xs text-zinc-500">
+                Reservar esta clase usará{' '}
+                <span className="font-semibold text-zinc-300">1 de tus {week?.limit} clases</span> de la
+                semana{remaining != null ? ` (te quedarían ${Math.max(0, remaining - 1)})` : ''}.
+              </p>
               <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
                 <span>
