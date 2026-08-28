@@ -197,7 +197,12 @@ export default function MembersManager() {
                 </div>
                 {m.role !== 'admin' && (
                   <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                    {m.membership_active ? (
+                    {m.membership_active &&
+                    !(
+                      m.paid_until != null &&
+                      daysFromTodayISO(m.paid_until) < 0 &&
+                      (m.courtesy_used ?? 0) >= courtesyClasses
+                    ) ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-accent-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-300 ring-1 ring-accent-500/25">
                         <BadgeCheck className="h-3 w-3" /> Activo
                       </span>
