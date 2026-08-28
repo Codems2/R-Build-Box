@@ -42,6 +42,8 @@ export interface AppSettings {
   weekly_class_limit: number;
   /** Cuota mensual estándar (€) para socios sin plan */
   default_monthly_fee: number;
+  /** Clases de cortesía tras vencer el mes (0 = sin cortesía) */
+  courtesy_classes: number;
   /** URL del logo personalizado (null = logo por defecto) */
   logo_url: string | null;
 }
@@ -103,6 +105,10 @@ export interface Member {
   plan_name: string | null;
   /** Fecha hasta la que tiene pagada la mensualidad (YYYY-MM-DD) */
   paid_until: string | null;
+  /** Clases de cortesía ya usadas (reservas con fecha posterior a paid_until) */
+  courtesy_used?: number;
+  /** Deuda de clases arrastrada al periodo pagado */
+  class_debt?: number;
   created_at?: string;
 }
 

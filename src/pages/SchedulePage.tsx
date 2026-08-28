@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CalendarX2, ChevronLeft, ChevronRight, Loader2, Lock } from 'lucide-react';
+import { CalendarX2, ChevronLeft, ChevronRight, Gift, Loader2, Lock } from 'lucide-react';
 import SlotCard from '../components/SlotCard';
 import BookingModal from '../components/BookingModal';
 import { useSchedule } from '../hooks/useSchedule';
-import { fetchBookingCounts, fetchMyBookings } from '../lib/api';
+import { fetchAppSettings, fetchBookingCounts, fetchMyBookings } from '../lib/api';
 import {
   BOOKING_WINDOW_DAYS,
   daysFromTodayISO,
@@ -55,6 +55,8 @@ export default function SchedulePage() {
 
   const [counts, setCounts] = useState<BookingCounts>({});
   const [mine, setMine] = useState<Record<string, string>>({});
+  const [myDates, setMyDates] = useState<string[]>([]);
+  const [courtesyLimit, setCourtesyLimit] = useState(0);
   const [selected, setSelected] = useState<Session | null>(null);
 
   const loadCounts = useCallback(() => {
@@ -66,12 +68,14 @@ export default function SchedulePage() {
         const map: Record<string, string> = {};
         for (const r of rows) map[countKey(r.slot_id, r.class_date)] = r.id;
         setMine(map);
+        setMyDates(rows.map((r) => r.class_date));
       })
       .catch(() => {});
   }, []);
   useEffect(() => {
     loadCounts();
     loadMine();
+    fetchAppSettings().then((s) => setCourtesyLimit(s.courtesy_classes)).catch(() => {});
   }, [loadCounts, loadMine]);
 
   const handleBookingChanged = useCallback(() => {
@@ -102,6 +106,22 @@ export default function SchedulePage() {
   const daySessions = byDate[activeDate] ?? [];
 
   const canGoBack = weekMonday > thisMonday || isAdmin;
+
+  // Estado de mensualidad del socio: al día, en cortesía o inactivo
+  const paidUntil = profile?.paid_until ?? null;
+  const pastDue = paidUntil != null && todayISO() > paidUntil;
+  const courtesyUsed = paidUntil ? myDates.filter((d) => d > paidUntil).length : 0;
+  const memberStatus: 'ok' | 'courtesy' | 'inactive' =
+    !profile || isAdmin
+      ? 'ok'
+      : !profile.membership_active
+        ? 'inactive'
+        : pastDue
+          ? courtesyLimit > 0 && courtesyUsed < courtesyLimit
+            ? 'courtesy'
+            : 'inactive'
+          : 'ok';
+  const courtesyLeft = Math.max(0, courtesyLimit - courtesyUsed);
 
   function cardProps(session: Session) {
     const { slot, date } = session;
@@ -148,7 +168,7 @@ export default function SchedulePage() {
       </section>
 
       {/* Aviso de cuenta inactiva (discreto) */}
-      {profile && !isAdmin && !profile.membership_active && (
+      {memberStatus === 'inactive' && (
         <motion.div
           initial={{ opacity: 0, y: -6 }}
           animate={{ opacity: 1, y: 0 }}
@@ -158,6 +178,26 @@ export default function SchedulePage() {
           <p className="text-xs leading-relaxed text-amber-200/90">
             <span className="font-semibold text-amber-100">Tu cuenta está inactiva.</span> Puedes
             consultar los horarios, pero para reservar clases ponte al día con el pago en el box.
+          </p>
+        </motion.div>
+      )}
+
+      {/* Aviso de clases de cortesía */}
+      {memberStatus === 'courtesy' && (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4 flex items-start gap-2.5 rounded-2xl border border-amber-500/30 bg-amber-500/[0.09] px-4 py-3"
+        >
+          <Gift className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+          <p className="text-xs leading-relaxed text-amber-200/90">
+            <span className="font-semibold text-amber-100">
+              Estás usando clases de cortesía
+              {courtesyLimit > 0 && ` (te ${courtesyLeft === 1 ? 'queda' : 'quedan'} ${courtesyLeft} de ${courtesyLimit})`}
+              .
+            </span>{' '}
+            Tu mes ha vencido: ponte al día con el pago en el box. Estas clases se restarán de tu
+            próxima mensualidad.
           </p>
         </motion.div>
       )}

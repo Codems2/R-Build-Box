@@ -5,6 +5,7 @@ import {
   CalendarClock,
   Clock3,
   Euro,
+  Gift,
   Loader2,
   Mail,
   Phone,
@@ -45,6 +46,7 @@ export default function MembersManager() {
   const [members, setMembers] = useState<Member[] | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [defaultFee, setDefaultFee] = useState(60);
+  const [courtesyClasses, setCourtesyClasses] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [managing, setManaging] = useState<Member | null>(null);
@@ -58,6 +60,7 @@ export default function MembersManager() {
       setMembers(m);
       setPlans(p);
       setDefaultFee(s.default_monthly_fee);
+      setCourtesyClasses(s.courtesy_classes);
     } catch (e) {
       console.error(e);
       setError('No se pudieron cargar los socios.');
@@ -207,6 +210,17 @@ export default function MembersManager() {
                       {m.plan_name ?? 'Cuota estándar'}
                     </span>
                     {(() => {
+                      const pastDue = m.paid_until != null && daysFromTodayISO(m.paid_until) < 0;
+                      const used = m.courtesy_used ?? 0;
+                      const inCourtesy =
+                        m.membership_active && pastDue && courtesyClasses > 0 && used < courtesyClasses;
+                      if (inCourtesy) {
+                        return (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300 ring-1 ring-amber-500/30">
+                            <Gift className="h-3 w-3" /> Cortesía · {used}/{courtesyClasses}
+                          </span>
+                        );
+                      }
                       const due = dueInfo(m.paid_until);
                       if (!due) return null;
                       const cls =
@@ -229,6 +243,12 @@ export default function MembersManager() {
                         </span>
                         );
                       })()}
+                      {!(m.paid_until != null && daysFromTodayISO(m.paid_until) < 0) &&
+                        (m.class_debt ?? 0) > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 ring-1 ring-white/10">
+                            −{m.class_debt} clases este mes
+                          </span>
+                        )}
                     </div>
                   )}
                   </div>
@@ -279,6 +299,7 @@ function PaymentModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doneUntil, setDoneUntil] = useState<string | null>(null);
+  const [deducted, setDeducted] = useState(0);
 
   useEffect(() => {
     if (member) {
@@ -288,6 +309,7 @@ function PaymentModal({
       setCreateIncome(true);
       setError(null);
       setDoneUntil(null);
+      setDeducted(0);
     }
   }, [member, plans, defaultFee]);
 
@@ -306,6 +328,7 @@ function PaymentModal({
       }
       const res = await registerPayment(member.id, createIncome, value, paidAt || null);
       setDoneUntil(res.paid_until);
+      setDeducted(res.courtesy_deducted);
       await onSaved();
     } catch (err) {
       console.error(err);
@@ -333,6 +356,12 @@ function PaymentModal({
               Cuenta activa hasta el{' '}
               <span className="font-medium capitalize text-zinc-200">{formatDateES(doneUntil)}</span>.
             </p>
+            {deducted > 0 && (
+              <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200 ring-1 ring-amber-500/25">
+                <Gift className="h-3.5 w-3.5" /> Se han restado {deducted}{' '}
+                {deducted === 1 ? 'clase' : 'clases'} de cortesía de este mes.
+              </p>
+            )}
           </div>
           <button onClick={onClose} className="btn-primary w-full">
             Listo

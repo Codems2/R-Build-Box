@@ -23,7 +23,7 @@ import { mondayOfWeekISO, shiftISO, todayISO } from './dates';
 
 const LS_SETTINGS = 'rmbox_settings_v1';
 const LS_PLANS = 'rmbox_plans_v2';
-const DEFAULT_SETTINGS: AppSettings = { weekly_class_limit: 3, default_monthly_fee: 60, logo_url: null };
+const DEFAULT_SETTINGS: AppSettings = { weekly_class_limit: 3, default_monthly_fee: 60, courtesy_classes: 2, logo_url: null };
 
 const LS_SLOTS = 'rmbox_slots_v1';
 const LS_TYPES = 'rmbox_class_types_v1';
@@ -464,7 +464,7 @@ export async function registerPayment(
   createIncome: boolean,
   amount?: number | null,
   paidAt?: string | null,
-): Promise<{ paid_until: string; income_created: boolean }> {
+): Promise<{ paid_until: string; income_created: boolean; courtesy_deducted: number }> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.rpc('register_payment', {
       p_member_id: memberId,
@@ -473,21 +473,26 @@ export async function registerPayment(
       p_paid_at: paidAt ?? null,
     });
     if (error) throw error;
-    const d = data as { paid_until: string; income_created: boolean };
-    return d;
+    const d = data as { paid_until: string; income_created: boolean; courtesy_deducted?: number };
+    return { ...d, courtesy_deducted: d.courtesy_deducted ?? 0 };
   }
   // Demo: mes rodante sobre localStorage + ingreso opcional
   const members = readLS<Member[]>(LS_MEMBERS, []);
   const m = members.find((x) => x.id === memberId);
   const today = todayISO();
   const ref = paidAt || today; // fecha de referencia del pago (indicada o hoy)
+  const courtesyDeducted = m?.paid_until && m.paid_until < today ? m.courtesy_used ?? 0 : 0;
   const base = m?.paid_until && m.paid_until > ref ? m.paid_until : ref;
   const d = new Date(`${base}T00:00:00`);
   d.setMonth(d.getMonth() + 1);
   const paidUntil = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   writeLS(
     LS_MEMBERS,
-    members.map((x) => (x.id === memberId ? { ...x, membership_active: true, paid_until: paidUntil } : x)),
+    members.map((x) =>
+      x.id === memberId
+        ? { ...x, membership_active: true, paid_until: paidUntil, class_debt: courtesyDeducted, courtesy_used: 0 }
+        : x,
+    ),
   );
   let income = false;
   const value = amount ?? readLS<Partial<AppSettings>>(LS_SETTINGS, {}).default_monthly_fee ?? 60;
@@ -499,7 +504,7 @@ export async function registerPayment(
     ]);
     income = true;
   }
-  return { paid_until: paidUntil, income_created: income };
+  return { paid_until: paidUntil, income_created: income, courtesy_deducted: courtesyDeducted };
 }
 
 /** Solo admin: activar/desactivar la membresía o cambiar el plan de un socio */
@@ -528,14 +533,20 @@ export async function fetchAppSettings(): Promise<AppSettings> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase
       .from('app_settings')
-      .select('weekly_class_limit, default_monthly_fee, logo_url')
+      .select('weekly_class_limit, default_monthly_fee, courtesy_classes, logo_url')
       .eq('id', true)
       .single();
     if (error) throw error;
-    const row = data as { weekly_class_limit: number; default_monthly_fee: string | number; logo_url: string | null };
+    const row = data as {
+      weekly_class_limit: number;
+      default_monthly_fee: string | number;
+      courtesy_classes: number;
+      logo_url: string | null;
+    };
     return {
       weekly_class_limit: Number(row.weekly_class_limit),
       default_monthly_fee: Number(row.default_monthly_fee),
+      courtesy_classes: Number(row.courtesy_classes),
       logo_url: row.logo_url ?? null,
     };
   }
@@ -545,6 +556,7 @@ export async function fetchAppSettings(): Promise<AppSettings> {
 export async function updateAppSettings(patch: {
   weekly_class_limit: number;
   default_monthly_fee: number;
+  courtesy_classes: number;
 }): Promise<void> {
   if (isSupabaseConfigured && supabase) {
     const { error } = await supabase
@@ -552,6 +564,7 @@ export async function updateAppSettings(patch: {
       .update({
         weekly_class_limit: patch.weekly_class_limit,
         default_monthly_fee: patch.default_monthly_fee,
+        courtesy_classes: patch.courtesy_classes,
         updated_at: new Date().toISOString(),
       })
       .eq('id', true);

@@ -18,6 +18,8 @@ export interface Profile {
   phone: string | null;
   email: string | null;
   membership_active: boolean;
+  /** Fecha hasta la que tiene pagada la mensualidad (YYYY-MM-DD) */
+  paid_until?: string | null;
 }
 
 interface AuthContextValue {
@@ -130,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // RLS, y sin este filtro maybeSingle() recibiría varias filas y fallaría.
       const { data } = await supabase!
         .from('profiles')
-        .select('member_no, role, first_name, last_name, phone, email, membership_active')
+        .select('member_no, role, first_name, last_name, phone, email, membership_active, paid_until')
         .eq('id', uid)
         .maybeSingle();
       if (active && data) {
@@ -143,6 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           phone: row.phone as string | null,
           email: row.email as string | null,
           membership_active: Boolean(row.membership_active),
+          paid_until: (row.paid_until as string | null) ?? null,
         });
       } else if (active) {
         setProfile(null);

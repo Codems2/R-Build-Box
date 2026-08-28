@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
-import { CalendarRange, Check, Euro, Image as ImageIcon, Loader2, RotateCcw, Upload } from 'lucide-react';
+import { CalendarRange, Check, Euro, Gift, Image as ImageIcon, Loader2, RotateCcw, Upload } from 'lucide-react';
 import { fetchAppSettings, resetLogo, updateAppSettings, uploadLogo } from '../../lib/api';
 import { applyPwaBranding, resetPwaBranding } from '../../lib/pwaBranding';
 import { useAuth } from '../../lib/auth';
@@ -9,6 +9,7 @@ export default function SettingsManager() {
   const { logoUrl, refreshBranding } = useAuth();
   const [limit, setLimit] = useState<number | null>(null);
   const [fee, setFee] = useState('');
+  const [courtesy, setCourtesy] = useState(2);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +54,7 @@ export default function SettingsManager() {
       .then((s) => {
         setLimit(s.weekly_class_limit);
         setFee(String(s.default_monthly_fee));
+        setCourtesy(s.courtesy_classes);
       })
       .catch(() => setError('No se pudo cargar la configuración.'));
   }, []);
@@ -72,6 +74,7 @@ export default function SettingsManager() {
       await updateAppSettings({
         weekly_class_limit: limit,
         default_monthly_fee: Math.round(feeValue * 100) / 100,
+        courtesy_classes: courtesy,
       });
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2500);
@@ -198,6 +201,31 @@ export default function SettingsManager() {
                   className="input mt-3 w-28"
                   value={fee}
                   onChange={(e) => setFee(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Clases de cortesía */}
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500/15 text-brand-300 ring-1 ring-brand-500/25">
+                <Gift className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-white">Clases de cortesía</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-zinc-400">
+                  Cuando a un socio se le acaba el mes pagado, puede seguir reservando estas clases
+                  de margen antes de desactivarse. Al ponerse al día, esas clases usadas se le restan
+                  del siguiente mes. Pon 0 para desactivar la cortesía.
+                </p>
+                <input
+                  id="courtesy-classes"
+                  type="number"
+                  min={0}
+                  max={50}
+                  required
+                  className="input mt-3 w-28"
+                  value={courtesy}
+                  onChange={(e) => setCourtesy(Math.max(0, Math.min(50, Number(e.target.value))))}
                 />
               </div>
             </div>
