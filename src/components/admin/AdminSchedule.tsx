@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ChevronLeft,
@@ -16,7 +16,7 @@ import SlotForm from './SlotForm';
 import BookingsModal from './BookingsModal';
 import GuestBookingModal from './GuestBookingModal';
 import { useSchedule } from '../../hooks/useSchedule';
-import { createSlot, deleteSlot, updateSlot } from '../../lib/api';
+import { createSlot, deleteSlot, fetchBookingCounts, updateSlot } from '../../lib/api';
 import { sessionsForWeek } from '../../lib/schedule';
 import {
   formatDayShort,
@@ -28,10 +28,12 @@ import {
 } from '../../lib/dates';
 import {
   KIND_META,
+  countKey,
   endTime,
   formatTime,
   slotColor,
   slotTitle,
+  type BookingCounts,
   type ScheduleSlot,
   type Session,
   type SlotInput,
@@ -47,6 +49,14 @@ export default function AdminSchedule() {
   const [formDate, setFormDate] = useState(todayISO());
   const [viewingBookings, setViewingBookings] = useState<ScheduleSlot | null>(null);
   const [guestFor, setGuestFor] = useState<{ slot: ScheduleSlot; date: string } | null>(null);
+  const [counts, setCounts] = useState<BookingCounts>({});
+
+  const loadCounts = useCallback(() => {
+    fetchBookingCounts().then(setCounts).catch(() => {});
+  }, []);
+  useEffect(() => {
+    loadCounts();
+  }, [loadCounts]);
 
   useEffect(() => {
     const t = todayISO();
@@ -88,6 +98,7 @@ export default function AdminSchedule() {
     if (!window.confirm(msg)) return;
     await deleteSlot(slot.id);
     await reload();
+    loadCounts();
   }
   async function toggleActive(slot: ScheduleSlot) {
     const { id, ...rest } = slot;
@@ -195,6 +206,8 @@ export default function AdminSchedule() {
             daySessions.map(({ slot }) => {
               const color = slotColor(slot, classTypes);
               const kind = KIND_META[slot.kind];
+              const count = counts[countKey(slot.id, activeDate)] ?? 0;
+              const full = slot.capacity != null && count >= slot.capacity;
               const actions = (
                 <>
                   <button onClick={() => setViewingBookings(slot)} className="btn-icon" aria-label="Ver apuntados" title="Ver apuntados">
@@ -238,6 +251,23 @@ export default function AdminSchedule() {
                         {!slot.is_active && (
                           <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Oculta</span>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => setViewingBookings(slot)}
+                          title="Ver apuntados"
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 transition ${
+                            full
+                              ? 'bg-brand-500/15 text-brand-300 ring-brand-500/30'
+                              : count > 0
+                                ? 'bg-accent-500/15 text-accent-300 ring-accent-500/25'
+                                : 'bg-white/5 text-zinc-400 ring-white/10'
+                          }`}
+                        >
+                          <Users className="h-3 w-3" />
+                          {count}
+                          {slot.capacity != null ? `/${slot.capacity}` : ''}
+                          {full ? ' · completa' : ''}
+                        </button>
                       </div>
                       <p className="mt-1 flex flex-wrap gap-x-2 text-xs text-zinc-400">
                         <span className="whitespace-nowrap">
@@ -276,6 +306,7 @@ export default function AdminSchedule() {
         onClose={() => setViewingBookings(null)}
         slot={viewingBookings}
         classTypes={classTypes}
+        onChanged={loadCounts}
       />
       <GuestBookingModal
         open={guestFor !== null}
@@ -283,6 +314,7 @@ export default function AdminSchedule() {
         slot={guestFor?.slot ?? null}
         classDate={guestFor?.date ?? null}
         classTypes={classTypes}
+        onDone={loadCounts}
       />
     </section>
   );
