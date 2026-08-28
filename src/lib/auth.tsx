@@ -119,52 +119,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // ---- Supabase real ----
     let active = true;
     async function loadProfile() {
-      const { data: userData } = await supabase!.auth.getUser();
-      const uid = userData.user?.id;
-      if (!uid) {
-        if (active) {
-          setProfile(null);
-          setWeekStatus(null);
-        }
-        return;
-      }
-      // Filtramos por el propio id: un admin puede ver todas las fichas por
-      // RLS, y sin este filtro maybeSingle() recibiría varias filas y fallaría.
-      const { data } = await supabase!
-        .from('profiles')
-        .select('member_no, role, first_name, last_name, phone, email, membership_active, paid_until')
-        .eq('id', uid)
-        .maybeSingle();
-      if (active && data) {
-        const row = data as unknown as Record<string, unknown>;
-        setProfile({
-          member_no: row.member_no as number,
-          role: row.role as 'user' | 'admin',
-          first_name: row.first_name as string | null,
-          last_name: row.last_name as string | null,
-          phone: row.phone as string | null,
-          email: row.email as string | null,
-          membership_active: Boolean(row.membership_active),
-          paid_until: (row.paid_until as string | null) ?? null,
-        });
-      } else if (active) {
-        setProfile(null);
-      }
       try {
+        // Usamos el id de la sesión cacheada en vez de getUser() (una llamada
+        // de red extra por cada evento): el propio Postgres valida el JWT en
+        // cada consulta vía RLS, así que aquí solo necesitamos saber a quién
+        // consultar. Menos red = menos camino frágil de refresco de token.
+        const { data: sessionData } = await supabase!.auth.getSession();
+        const uid = sessionData.session?.user?.id;
+        if (!uid) {
+          if (active) {
+            setProfile(null);
+            setWeekStatus(null);
+          }
+          return;
+        }
+        // Filtramos por el propio id: un admin puede ver todas las fichas por
+        // RLS, y sin este filtro maybeSingle() recibiría varias filas y fallaría.
+        const { data } = await supabase!
+          .from('profiles')
+          .select('member_no, role, first_name, last_name, phone, email, membership_active, paid_until')
+          .eq('id', uid)
+          .maybeSingle();
+        if (active && data) {
+          const row = data as unknown as Record<string, unknown>;
+          setProfile({
+            member_no: row.member_no as number,
+            role: row.role as 'user' | 'admin',
+            first_name: row.first_name as string | null,
+            last_name: row.last_name as string | null,
+            phone: row.phone as string | null,
+            email: row.email as string | null,
+            membership_active: Boolean(row.membership_active),
+            paid_until: (row.paid_until as string | null) ?? null,
+          });
+        } else if (active) {
+          setProfile(null);
+        }
         const w = await fetchWeekStatus();
         if (active) setWeekStatus(w);
       } catch {
+        // Red colgada/timeout: no bloqueamos la app. Se reintentará en el
+        // próximo evento de auth o acción del usuario.
         if (active) setWeekStatus(null);
       }
     }
     loadProfileRef.current = loadProfile;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
-      setIsAuthed(Boolean(data.session));
-      if (data.session) void loadProfile();
-      setLoading(false);
-    });
+    // Failsafe de arranque: aunque getSession() se cuelgue (refresco de token
+    // atascado, lock en mal estado…), la app NUNCA se queda en "Cargando…".
+    // Tras el corte seguimos como no autenticado y onAuthStateChange corregirá
+    // en cuanto la sesión se recupere.
+    const finishBoot = () => {
+      if (active) setLoading(false);
+    };
+    const bootFailsafe = setTimeout(finishBoot, 4000);
+
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!active) return;
+        setIsAuthed(Boolean(data.session));
+        if (data.session) void loadProfile();
+      })
+      .catch(() => {
+        /* sesión no disponible ahora; se recuperará en el próximo evento */
+      })
+      .finally(() => {
+        clearTimeout(bootFailsafe);
+        finishBoot();
+      });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!active) return;
