@@ -316,7 +316,11 @@ function PaymentModal({
       setDoneUntil(null);
       setDeducted(0);
     }
-  }, [member, plans, defaultFee]);
+    // Solo reinicializamos al abrir el modal para OTRO socio. Si dependiéramos
+    // también de `plans`/`defaultFee`, al recargarlos tras registrar el pago
+    // (onSaved) este efecto borraría `doneUntil` y con él la pantalla de éxito.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [member?.id]);
 
   if (!member) return null;
 
