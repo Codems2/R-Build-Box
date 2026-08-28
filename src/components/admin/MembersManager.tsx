@@ -17,6 +17,7 @@ import {
 import Modal from '../Modal';
 import {
   deleteMember,
+  fetchAppSettings,
   fetchMembers,
   fetchPlans,
   inviteMember,
@@ -42,6 +43,7 @@ const EMPTY: MemberInput = { first_name: '', last_name: '', phone: '', email: ''
 export default function MembersManager() {
   const [members, setMembers] = useState<Member[] | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [defaultFee, setDefaultFee] = useState(60);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [managing, setManaging] = useState<Member | null>(null);
@@ -51,9 +53,10 @@ export default function MembersManager() {
   const load = useCallback(async () => {
     try {
       setError(null);
-      const [m, p] = await Promise.all([fetchMembers(), fetchPlans()]);
+      const [m, p, s] = await Promise.all([fetchMembers(), fetchPlans(), fetchAppSettings()]);
       setMembers(m);
       setPlans(p);
+      setDefaultFee(s.default_monthly_fee);
     } catch (e) {
       console.error(e);
       setError('No se pudieron cargar los socios.');
@@ -246,7 +249,13 @@ export default function MembersManager() {
         onClose={() => setManaging(null)}
         onSaved={load}
       />
-      <PaymentModal member={paying} plans={plans} onClose={() => setPaying(null)} onSaved={load} />
+      <PaymentModal
+        member={paying}
+        plans={plans}
+        defaultFee={defaultFee}
+        onClose={() => setPaying(null)}
+        onSaved={load}
+      />
     </section>
   );
 }
@@ -254,14 +263,18 @@ export default function MembersManager() {
 function PaymentModal({
   member,
   plans,
+  defaultFee,
   onClose,
   onSaved,
 }: {
   member: Member | null;
   plans: Plan[];
+  defaultFee: number;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const memberPlan = member ? plans.find((p) => p.id === member.plan_id) : undefined;
+  const suggested = memberPlan ? memberPlan.monthly_price : defaultFee;
   const [amount, setAmount] = useState('');
   const [createIncome, setCreateIncome] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -271,12 +284,12 @@ function PaymentModal({
   useEffect(() => {
     if (member) {
       const plan = plans.find((p) => p.id === member.plan_id);
-      setAmount(plan ? String(plan.monthly_price) : '');
+      setAmount(String(plan ? plan.monthly_price : defaultFee));
       setCreateIncome(true);
       setError(null);
       setDoneUntil(null);
     }
-  }, [member, plans]);
+  }, [member, plans, defaultFee]);
 
   if (!member) return null;
 
@@ -353,12 +366,12 @@ function PaymentModal({
               step="0.01"
               min="0"
               className="input"
-              placeholder="Precio del plan / cuota estándar"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
             <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-600">
-              Déjalo vacío para usar el precio del plan del socio (o la cuota estándar).
+              Puesto automáticamente: {memberPlan ? `plan «${memberPlan.name}»` : 'cuota estándar'} ·{' '}
+              {suggested.toLocaleString('es-ES')} €. Cámbialo solo si cobras otra cantidad.
             </p>
           </div>
 
