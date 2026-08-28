@@ -218,8 +218,8 @@ export default function SchedulePage() {
         </div>
       ) : (
         <>
-          {/* Móvil / tablet: selector de día + lista */}
-          <div className="lg:hidden">
+          {/* Móvil: selector de día + lista */}
+          <div className="md:hidden">
             <div
               className="sticky top-16 z-30 -mx-4 mb-4 flex gap-1.5 overflow-x-auto bg-ink-950/85 px-4 py-3 backdrop-blur-xl [scrollbar-width:none]"
               role="tablist"
@@ -287,13 +287,13 @@ export default function SchedulePage() {
             </AnimatePresence>
           </div>
 
-          {/* Escritorio: semana completa */}
+          {/* Tablet y escritorio: semana completa */}
           <motion.div
             key={weekMonday}
             variants={container}
             initial="hidden"
             animate="show"
-            className="hidden grid-cols-7 gap-3 lg:grid"
+            className="hidden grid-cols-7 gap-2.5 md:grid lg:gap-3"
           >
             {weekDates.map((d) => {
               const isToday = d === todayISO();
