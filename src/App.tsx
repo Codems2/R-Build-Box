@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import Header from './components/Header';
 import ErrorBoundary from './components/ErrorBoundary';
 import InstallPrompt from './components/InstallPrompt';
+import UpdateToast from './components/UpdateToast';
 import SchedulePage from './pages/SchedulePage';
 import AdminPage from './pages/AdminPage';
 import LoginPage from './pages/LoginPage';
@@ -36,6 +37,7 @@ export default function App() {
           <LoginPage key="login" />
         </AnimatePresence>
         <InstallPrompt />
+        <UpdateToast />
       </>
     );
   }
@@ -58,6 +60,7 @@ export default function App() {
         © {new Date().getFullYear()} · R-Build Box
       </footer>
       <InstallPrompt />
+      <UpdateToast />
     </div>
   );
 }

@@ -6,7 +6,7 @@
  * a otros orígenes (Supabase, fuentes...) ni peticiones que no sean GET, para
  * no servir datos privados obsoletos ni romper la autenticación.
  */
-const CACHE = 'rbuildbox-v1';
+const CACHE = 'rbuildbox-v2';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
