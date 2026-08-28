@@ -463,12 +463,14 @@ export async function registerPayment(
   memberId: string,
   createIncome: boolean,
   amount?: number | null,
+  paidAt?: string | null,
 ): Promise<{ paid_until: string; income_created: boolean }> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.rpc('register_payment', {
       p_member_id: memberId,
       p_create_income: createIncome,
       p_amount: amount ?? null,
+      p_paid_at: paidAt ?? null,
     });
     if (error) throw error;
     const d = data as { paid_until: string; income_created: boolean };
@@ -478,7 +480,8 @@ export async function registerPayment(
   const members = readLS<Member[]>(LS_MEMBERS, []);
   const m = members.find((x) => x.id === memberId);
   const today = todayISO();
-  const base = m?.paid_until && m.paid_until > today ? m.paid_until : today;
+  const ref = paidAt || today; // fecha de referencia del pago (indicada o hoy)
+  const base = m?.paid_until && m.paid_until > ref ? m.paid_until : ref;
   const d = new Date(`${base}T00:00:00`);
   d.setMonth(d.getMonth() + 1);
   const paidUntil = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -492,7 +495,7 @@ export async function registerPayment(
     const name = m ? memberFullNameLS(m) : 'Socio';
     writeLS(LS_FINANCE, [
       ...readLS<FinanceEntry[]>(LS_FINANCE, []),
-      { id: newId(), kind: 'income', concept: `Cuota · ${name}`, amount: value, entry_date: today, invoice_path: null },
+      { id: newId(), kind: 'income', concept: `Cuota · ${name}`, amount: value, entry_date: ref, invoice_path: null },
     ]);
     income = true;
   }

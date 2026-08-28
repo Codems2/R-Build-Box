@@ -27,7 +27,7 @@ import {
   updateMemberMembership,
   updateMemberProfile,
 } from '../../lib/api';
-import { daysFromTodayISO, formatDateES } from '../../lib/dates';
+import { daysFromTodayISO, formatDateES, todayISO } from '../../lib/dates';
 import { memberFullName, type Member, type MemberInput, type Plan } from '../../lib/types';
 
 /** Estado de vencimiento de la mensualidad a partir de paid_until */
@@ -274,6 +274,7 @@ function PaymentModal({
   const memberPlan = member ? plans.find((p) => p.id === member.plan_id) : undefined;
   const suggested = memberPlan ? memberPlan.monthly_price : defaultFee;
   const [amount, setAmount] = useState('');
+  const [paidAt, setPaidAt] = useState(todayISO());
   const [createIncome, setCreateIncome] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -283,6 +284,7 @@ function PaymentModal({
     if (member) {
       const plan = plans.find((p) => p.id === member.plan_id);
       setAmount(String(plan ? plan.monthly_price : defaultFee));
+      setPaidAt(todayISO());
       setCreateIncome(true);
       setError(null);
       setDoneUntil(null);
@@ -302,7 +304,7 @@ function PaymentModal({
         setSaving(false);
         return;
       }
-      const res = await registerPayment(member.id, createIncome, value);
+      const res = await registerPayment(member.id, createIncome, value, paidAt || null);
       setDoneUntil(res.paid_until);
       await onSaved();
     } catch (err) {
@@ -348,9 +350,27 @@ function PaymentModal({
             ) : (
               <>
                 Sin pago registrado. Al registrarlo, la cuenta queda activa{' '}
-                <strong className="text-white">un mes</strong> desde hoy.
+                <strong className="text-white">un mes</strong> desde la fecha del pago.
               </>
             )}
+          </div>
+
+          <div>
+            <label htmlFor="pay-date" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              Fecha del pago
+            </label>
+            <input
+              id="pay-date"
+              type="date"
+              max={todayISO()}
+              className="input"
+              value={paidAt}
+              onChange={(e) => setPaidAt(e.target.value)}
+            />
+            <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-600">
+              Por defecto hoy. Cámbiala si registras el pago con retraso: el mes de cuota y el
+              ingreso se cuentan desde esta fecha.
+            </p>
           </div>
 
           <div>
