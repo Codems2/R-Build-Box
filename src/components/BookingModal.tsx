@@ -37,6 +37,14 @@ interface Props {
   count: number;
   /** Id de mi reserva para esta sesión, si ya estoy apuntado */
   myBookingId: string | null;
+  /** Estado de mensualidad del socio (al día / cortesía / inactivo) */
+  memberStatus?: 'ok' | 'courtesy' | 'inactive';
+  /** Clases de cortesía que le quedan (si está en cortesía) */
+  courtesyLeft?: number;
+  /** Máximo de clases de cortesía configurado */
+  courtesyLimit?: number;
+  /** Inactivo por haber agotado las clases de cortesía */
+  courtesyExhausted?: boolean;
   /** Refresca ocupación y mis reservas tras reservar/cancelar */
   onChanged: () => void;
 }
@@ -51,6 +59,10 @@ export default function BookingModal({
   classTypes,
   count,
   myBookingId,
+  memberStatus,
+  courtesyLeft,
+  courtesyLimit,
+  courtesyExhausted,
   onChanged,
 }: Props) {
   const { profile, refreshProfile } = useAuth();
@@ -89,7 +101,12 @@ export default function BookingModal({
   const free = slot.capacity != null ? Math.max(0, slot.capacity - count) : null;
   const full = free !== null && free <= 0;
   const booked = Boolean(myBookingId);
-  const active = unlimited || (profile?.membership_active ?? false);
+  // Estado efectivo: si el padre nos pasa memberStatus lo usamos (contempla la
+  // cortesía agotada, en la que membership_active sigue en true); si no, caemos
+  // al flag directo.
+  const effectiveInactive = memberStatus ? memberStatus === 'inactive' : !(profile?.membership_active ?? false);
+  const active = unlimited || !effectiveInactive;
+  const inCourtesy = !unlimited && memberStatus === 'courtesy';
   const remaining = week ? Math.max(0, week.limit - week.used) : null;
   // Penalización por cancelación tardía: dentro de la última hora (o ya empezada)
   const classStartMs = new Date(`${classDate}T${slot.start_time}:00`).getTime();
@@ -334,7 +351,11 @@ export default function BookingModal({
           {!active ? (
             <Notice
               icon={<Lock className="h-4 w-4" />}
-              text="Tu cuenta está inactiva. Ponte al día con el pago en el box para poder reservar."
+              text={
+                courtesyExhausted
+                  ? 'Has usado todas tus clases de cortesía, así que hemos inactivado tu cuenta. Podrás volver a reservar en cuanto te pongas al corriente de pago en el box.'
+                  : 'Tu cuenta está inactiva. Ponte al día con el pago en el box para poder reservar.'
+              }
             />
           ) : tooFar ? (
             <Notice
@@ -357,11 +378,30 @@ export default function BookingModal({
             </p>
           ) : (
             <div className="space-y-2">
-              <p className="text-center text-xs text-zinc-500">
-                Reservar esta clase usará{' '}
-                <span className="font-semibold text-zinc-300">1 de tus {week?.limit} clases</span> de la
-                semana{remaining != null ? ` (te quedarían ${Math.max(0, remaining - 1)})` : ''}.
-              </p>
+              {inCourtesy ? (
+                <p className="text-center text-xs leading-relaxed text-amber-300/90">
+                  Estás usando <strong className="text-amber-200">clases de cortesía</strong> (tu mes
+                  ha vencido).
+                  {typeof courtesyLeft === 'number' && (
+                    <>
+                      {' '}Al reservar esta te{' '}
+                      {Math.max(0, courtesyLeft - 1) === 1 ? 'quedará' : 'quedarán'}{' '}
+                      <span className="font-semibold text-amber-200">
+                        {Math.max(0, courtesyLeft - 1)}
+                        {typeof courtesyLimit === 'number' ? ` de ${courtesyLimit}` : ''}
+                      </span>
+                      .
+                    </>
+                  )}{' '}
+                  Se restará de tu próxima mensualidad.
+                </p>
+              ) : (
+                <p className="text-center text-xs text-zinc-500">
+                  Reservar esta clase usará{' '}
+                  <span className="font-semibold text-zinc-300">1 de tus {week?.limit} clases</span> de la
+                  semana{remaining != null ? ` (te quedarían ${Math.max(0, remaining - 1)})` : ''}.
+                </p>
+              )}
               <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
                 <span>

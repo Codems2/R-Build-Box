@@ -122,6 +122,13 @@ export default function SchedulePage() {
             : 'inactive'
           : 'ok';
   const courtesyLeft = Math.max(0, courtesyLimit - courtesyUsed);
+  // Inactivo específicamente por haber agotado las clases de cortesía
+  const courtesyExhausted =
+    !isAdmin &&
+    (profile?.membership_active ?? false) &&
+    pastDue &&
+    courtesyLimit > 0 &&
+    courtesyUsed >= courtesyLimit;
 
   function cardProps(session: Session) {
     const { slot, date } = session;
@@ -175,10 +182,20 @@ export default function SchedulePage() {
           className="mb-4 flex items-start gap-2.5 rounded-2xl border border-amber-500/25 bg-amber-500/[0.07] px-4 py-3"
         >
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-          <p className="text-xs leading-relaxed text-amber-200/90">
-            <span className="font-semibold text-amber-100">Tu cuenta está inactiva.</span> Puedes
-            consultar los horarios, pero para reservar clases ponte al día con el pago en el box.
-          </p>
+          {courtesyExhausted ? (
+            <p className="text-xs leading-relaxed text-amber-200/90">
+              <span className="font-semibold text-amber-100">
+                Has usado todas tus clases de cortesía.
+              </span>{' '}
+              Hemos inactivado tu cuenta: podrás volver a reservar con nosotros en cuanto te pongas
+              al corriente de pago en el box.
+            </p>
+          ) : (
+            <p className="text-xs leading-relaxed text-amber-200/90">
+              <span className="font-semibold text-amber-100">Tu cuenta está inactiva.</span> Puedes
+              consultar los horarios, pero para reservar clases ponte al día con el pago en el box.
+            </p>
+          )}
         </motion.div>
       )}
 
@@ -390,6 +407,10 @@ export default function SchedulePage() {
         classTypes={classTypes}
         count={selected ? counts[countKey(selected.slot.id, selected.date)] ?? 0 : 0}
         myBookingId={selected ? mine[countKey(selected.slot.id, selected.date)] ?? null : null}
+        memberStatus={memberStatus}
+        courtesyLeft={courtesyLeft}
+        courtesyLimit={courtesyLimit}
+        courtesyExhausted={courtesyExhausted}
         onChanged={handleBookingChanged}
       />
     </motion.div>
