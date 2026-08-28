@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import { supabase, isSupabaseConfigured } from './supabase';
-import { fetchWeekStatus, fetchLogoUrl } from './api';
+import { fetchWeekStatus, fetchLogoUrl, demoCourtesyUsed } from './api';
 import type { WeekStatus } from './types';
 
 export interface Profile {
@@ -109,7 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(DEMO_PROFILES[kind]);
         setIsAuthed(true);
         void fetchWeekStatus()
-          .then((w) => setWeekStatus(kind === 'admin' ? { ...w, unlimited: true } : w))
+          .then((w) => setWeekStatus(kind === 'admin' ? { ...w, unlimited: true } : { ...w, courtesy_used: demoCourtesyUsed(DEMO_PROFILES[kind].paid_until) }))
           .catch(() => setWeekStatus(null));
       }
       setLoading(false);
@@ -189,7 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(DEMO_PROFILES[kind]);
       setIsAuthed(true);
       void fetchWeekStatus()
-        .then((w) => setWeekStatus(kind === 'admin' ? { ...w, unlimited: true } : w))
+        .then((w) => setWeekStatus(kind === 'admin' ? { ...w, unlimited: true } : { ...w, courtesy_used: demoCourtesyUsed(DEMO_PROFILES[kind].paid_until) }))
         .catch(() => setWeekStatus(null));
       return null;
     }

@@ -72,6 +72,10 @@ export interface WeekStatus {
   limit: number;
   /** Los admins no tienen límite */
   unlimited: boolean;
+  /** Clases de cortesía ya usadas (mes vencido) */
+  courtesy_used?: number;
+  /** Máximo de clases de cortesía configurado */
+  courtesy_limit?: number;
 }
 
 export type FinanceKind = 'income' | 'expense';

@@ -318,16 +318,34 @@ export async function fetchWeekStatus(refISO?: string): Promise<WeekStatus> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.rpc('my_week_status', { p_ref: refISO ?? null });
     if (error) throw error;
-    const d = data as { used: number; limit: number; unlimited: boolean };
-    return { used: Number(d.used), limit: Number(d.limit), unlimited: Boolean(d.unlimited) };
+    const d = data as {
+      used: number;
+      limit: number;
+      unlimited: boolean;
+      courtesy_used?: number;
+      courtesy_limit?: number;
+    };
+    return {
+      used: Number(d.used),
+      limit: Number(d.limit),
+      unlimited: Boolean(d.unlimited),
+      courtesy_used: d.courtesy_used != null ? Number(d.courtesy_used) : 0,
+      courtesy_limit: d.courtesy_limit != null ? Number(d.courtesy_limit) : 0,
+    };
   }
-  const limit = readLS<AppSettings>(LS_SETTINGS, DEFAULT_SETTINGS).weekly_class_limit;
+  const settings = { ...DEFAULT_SETTINGS, ...readLS<Partial<AppSettings>>(LS_SETTINGS, {}) };
   const monday = mondayOfWeekISO(refISO ?? todayISO());
   const nextMonday = shiftISO(monday, 7);
   const used = readLS<Booking[]>(LS_BOOKINGS, []).filter(
     (b) => b.class_date >= monday && b.class_date < nextMonday,
   ).length;
-  return { used, limit, unlimited: false };
+  return { used, limit: settings.weekly_class_limit, unlimited: false, courtesy_limit: settings.courtesy_classes, courtesy_used: 0 };
+}
+
+/** Demo: clases de cortesía usadas por el socio (reservas tras el mes vencido) */
+export function demoCourtesyUsed(paidUntil: string | null | undefined): number {
+  if (!paidUntil) return 0;
+  return readLS<Booking[]>(LS_BOOKINGS, []).filter((b) => b.class_date > paidUntil).length;
 }
 
 /** Solo admin: reservas futuras de un hueco */
