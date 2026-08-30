@@ -2,9 +2,9 @@ import { fetchBranding } from './api';
 
 // Datos base del manifiesto (deben coincidir con public/manifest.webmanifest)
 const MANIFEST_BASE = {
-  name: 'R-Build Box',
-  short_name: 'R-Build Box',
-  description: 'Reserva tus clases de Muay Thai en R-Build Box.',
+  name: 'Sabaii Muay Thai',
+  short_name: 'Sabaii Muay Thai',
+  description: 'Reserva tus clases en Sabaii Muay Thai.',
   id: '/',
   start_url: '/',
   scope: '/',

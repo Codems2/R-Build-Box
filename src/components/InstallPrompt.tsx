@@ -69,7 +69,7 @@ export default function InstallPrompt() {
             <div className="min-w-0 flex-1">
               {iosHint && !canInstall ? (
                 <p className="text-xs leading-snug text-zinc-300">
-                  Instala <span className="font-semibold text-white">R-Build Box</span>: pulsa{' '}
+                  Instala <span className="font-semibold text-white">Sabaii Muay Thai</span>: pulsa{' '}
                   <Share className="inline h-3.5 w-3.5 -translate-y-px text-accent-400" /> Compartir y
                   luego <span className="font-medium text-zinc-100">«Añadir a pantalla de inicio»</span>.
                 </p>

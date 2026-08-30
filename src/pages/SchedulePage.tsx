@@ -164,10 +164,9 @@ export default function SchedulePage() {
           initial={{ opacity: 0, y: 20, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-          lang="th"
-          className="thai-shimmer font-thai text-2xl font-semibold leading-tight sm:text-4xl"
+          className="thai-shimmer font-display text-3xl font-extrabold leading-tight tracking-tight sm:text-5xl"
         >
-          หัวใจนักสู้ · ศิลปะแห่งอาวุธทั้งแปด
+          Sabaii Muay Thai
         </motion.h1>
         <p className="mt-2 text-xs tracking-wide text-zinc-500 sm:text-sm">
           Corazón de luchador · el arte de las ocho armas
