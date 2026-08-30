@@ -57,7 +57,7 @@ export default function App() {
         </ErrorBoundary>
       </main>
       <footer className="border-t border-white/5 py-6 text-center text-xs text-zinc-500">
-        © {new Date().getFullYear()} · Sabaii Muay Thai
+        © {new Date().getFullYear()} · Sabai Muay Thai
       </footer>
       <InstallPrompt />
       <UpdateToast />

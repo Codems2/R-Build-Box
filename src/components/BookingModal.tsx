@@ -46,6 +46,8 @@ interface Props {
   courtesyLimit?: number;
   /** Inactivo por haber agotado las clases de cortesía */
   courtesyExhausted?: boolean;
+  /** Días de antelación con los que se puede reservar */
+  bookingWindowDays?: number;
   /** Refresca ocupación y mis reservas tras reservar/cancelar */
   onChanged: () => void;
 }
@@ -64,6 +66,7 @@ export default function BookingModal({
   courtesyLeft,
   courtesyLimit,
   courtesyExhausted,
+  bookingWindowDays,
   onChanged,
 }: Props) {
   const { profile, refreshProfile } = useAuth();
@@ -118,8 +121,9 @@ export default function BookingModal({
   const reachedMonthly = !unlimited && monthlyLimit != null && monthlyUsed >= monthlyLimit;
   // Ventana de reserva: solo hoy y hasta 2 días (los admins la ignoran)
   const daysAhead = daysFromTodayISO(classDate);
-  const tooFar = !unlimited && daysAhead > BOOKING_WINDOW_DAYS;
-  const opensOn = shiftISO(classDate, -BOOKING_WINDOW_DAYS);
+  const bookingWindow = bookingWindowDays ?? BOOKING_WINDOW_DAYS;
+  const tooFar = !unlimited && daysAhead > bookingWindow;
+  const opensOn = shiftISO(classDate, -bookingWindow);
   // Para socios hace falta conocer el estado semanal antes de permitir reservar
   const canBook =
     active && !full && !tooFar && !reachedLimit && !reachedMonthly && (unlimited || week != null);

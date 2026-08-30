@@ -57,6 +57,7 @@ export default function SchedulePage() {
   const [mine, setMine] = useState<Record<string, string>>({});
   const [myDates, setMyDates] = useState<string[]>([]);
   const [courtesyLimit, setCourtesyLimit] = useState(0);
+  const [bookingWindow, setBookingWindow] = useState(BOOKING_WINDOW_DAYS);
   const [selected, setSelected] = useState<Session | null>(null);
 
   const loadCounts = useCallback(() => {
@@ -75,7 +76,12 @@ export default function SchedulePage() {
   useEffect(() => {
     loadCounts();
     loadMine();
-    fetchAppSettings().then((s) => setCourtesyLimit(s.courtesy_classes)).catch(() => {});
+    fetchAppSettings()
+      .then((s) => {
+        setCourtesyLimit(s.courtesy_classes);
+        setBookingWindow(s.booking_window_days);
+      })
+      .catch(() => {});
   }, [loadCounts, loadMine]);
 
   const handleBookingChanged = useCallback(() => {
@@ -134,8 +140,8 @@ export default function SchedulePage() {
     const { slot, date } = session;
     const booked = Boolean(mine[countKey(slot.id, date)]);
     const daysAhead = daysFromTodayISO(date);
-    const locked = !isAdmin && !booked && (daysAhead < 0 || daysAhead > BOOKING_WINDOW_DAYS);
-    const opensOn = new Date(`${shiftISO(date, -BOOKING_WINDOW_DAYS)}T00:00:00`).toLocaleDateString(
+    const locked = !isAdmin && !booked && (daysAhead < 0 || daysAhead > bookingWindow);
+    const opensOn = new Date(`${shiftISO(date, -bookingWindow)}T00:00:00`).toLocaleDateString(
       'es-ES',
       { day: '2-digit', month: '2-digit' },
     );
@@ -166,7 +172,7 @@ export default function SchedulePage() {
           transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
           className="thai-shimmer font-display text-3xl font-extrabold leading-tight tracking-tight sm:text-5xl"
         >
-          Sabaii Muay Thai
+          Sabai Muay Thai
         </motion.h1>
         <p className="mt-2 text-xs tracking-wide text-zinc-500 sm:text-sm">
           Corazón de luchador · el arte de las ocho armas
@@ -410,6 +416,7 @@ export default function SchedulePage() {
         courtesyLeft={courtesyLeft}
         courtesyLimit={courtesyLimit}
         courtesyExhausted={courtesyExhausted}
+        bookingWindowDays={bookingWindow}
         onChanged={handleBookingChanged}
       />
     </motion.div>

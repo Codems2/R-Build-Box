@@ -2,9 +2,9 @@ import { fetchBranding } from './api';
 
 // Datos base del manifiesto (deben coincidir con public/manifest.webmanifest)
 const MANIFEST_BASE = {
-  name: 'Sabaii Muay Thai',
-  short_name: 'Sabaii Muay Thai',
-  description: 'Reserva tus clases en Sabaii Muay Thai.',
+  name: 'Sabai Muay Thai',
+  short_name: 'Sabai Muay Thai',
+  description: 'Reserva tus clases en Sabai Muay Thai.',
   id: '/',
   start_url: '/',
   scope: '/',

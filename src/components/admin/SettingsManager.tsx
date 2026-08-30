@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
-import { CalendarRange, Check, Euro, Gift, Image as ImageIcon, Loader2, RotateCcw, Upload } from 'lucide-react';
+import { CalendarClock, CalendarRange, Check, Euro, Gift, Image as ImageIcon, Loader2, RotateCcw, Upload } from 'lucide-react';
 import { fetchAppSettings, resetLogo, updateAppSettings, uploadLogo } from '../../lib/api';
 import { applyPwaBranding, resetPwaBranding } from '../../lib/pwaBranding';
 import { useAuth } from '../../lib/auth';
@@ -10,6 +10,7 @@ export default function SettingsManager() {
   const [limit, setLimit] = useState<number | null>(null);
   const [fee, setFee] = useState('');
   const [courtesy, setCourtesy] = useState(2);
+  const [bookingWindow, setBookingWindow] = useState(2);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +56,7 @@ export default function SettingsManager() {
         setLimit(s.weekly_class_limit);
         setFee(String(s.default_monthly_fee));
         setCourtesy(s.courtesy_classes);
+        setBookingWindow(s.booking_window_days);
       })
       .catch(() => setError('No se pudo cargar la configuración.'));
   }, []);
@@ -75,6 +77,7 @@ export default function SettingsManager() {
         weekly_class_limit: limit,
         default_monthly_fee: Math.round(feeValue * 100) / 100,
         courtesy_classes: courtesy,
+        booking_window_days: bookingWindow,
       });
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2500);
@@ -226,6 +229,30 @@ export default function SettingsManager() {
                   className="input mt-3 w-28"
                   value={courtesy}
                   onChange={(e) => setCourtesy(Math.max(0, Math.min(50, Number(e.target.value))))}
+                />
+              </div>
+            </div>
+
+            {/* Ventana de reserva */}
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-500/15 text-accent-300 ring-1 ring-accent-500/25">
+                <CalendarClock className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-white">Antelación de reserva</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-zinc-400">
+                  Con cuántos días de antelación puede reservar un socio una clase. La reserva se
+                  abre ese número de días antes. 2 días = 48 h; 0 = solo el mismo día.
+                </p>
+                <input
+                  id="booking-window"
+                  type="number"
+                  min={0}
+                  max={60}
+                  required
+                  className="input mt-3 w-28"
+                  value={bookingWindow}
+                  onChange={(e) => setBookingWindow(Math.max(0, Math.min(60, Number(e.target.value))))}
                 />
               </div>
             </div>

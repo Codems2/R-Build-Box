@@ -23,7 +23,7 @@ import { mondayOfWeekISO, shiftISO, todayISO } from './dates';
 
 const LS_SETTINGS = 'rmbox_settings_v1';
 const LS_PLANS = 'rmbox_plans_v2';
-const DEFAULT_SETTINGS: AppSettings = { weekly_class_limit: 3, default_monthly_fee: 60, courtesy_classes: 2, logo_url: null };
+const DEFAULT_SETTINGS: AppSettings = { weekly_class_limit: 3, default_monthly_fee: 60, courtesy_classes: 2, booking_window_days: 2, logo_url: null };
 
 const LS_SLOTS = 'rmbox_slots_v1';
 const LS_TYPES = 'rmbox_class_types_v1';
@@ -556,7 +556,7 @@ export async function fetchAppSettings(): Promise<AppSettings> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase
       .from('app_settings')
-      .select('weekly_class_limit, default_monthly_fee, courtesy_classes, logo_url')
+      .select('weekly_class_limit, default_monthly_fee, courtesy_classes, booking_window_days, logo_url')
       .eq('id', true)
       .single();
     if (error) throw error;
@@ -564,12 +564,14 @@ export async function fetchAppSettings(): Promise<AppSettings> {
       weekly_class_limit: number;
       default_monthly_fee: string | number;
       courtesy_classes: number;
+      booking_window_days: number;
       logo_url: string | null;
     };
     return {
       weekly_class_limit: Number(row.weekly_class_limit),
       default_monthly_fee: Number(row.default_monthly_fee),
       courtesy_classes: Number(row.courtesy_classes),
+      booking_window_days: Number(row.booking_window_days),
       logo_url: row.logo_url ?? null,
     };
   }
@@ -580,6 +582,7 @@ export async function updateAppSettings(patch: {
   weekly_class_limit: number;
   default_monthly_fee: number;
   courtesy_classes: number;
+  booking_window_days: number;
 }): Promise<void> {
   if (isSupabaseConfigured && supabase) {
     const { error } = await supabase
@@ -588,6 +591,7 @@ export async function updateAppSettings(patch: {
         weekly_class_limit: patch.weekly_class_limit,
         default_monthly_fee: patch.default_monthly_fee,
         courtesy_classes: patch.courtesy_classes,
+        booking_window_days: patch.booking_window_days,
         updated_at: new Date().toISOString(),
       })
       .eq('id', true);

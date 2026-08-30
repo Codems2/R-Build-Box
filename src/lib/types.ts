@@ -44,6 +44,8 @@ export interface AppSettings {
   default_monthly_fee: number;
   /** Clases de cortesía tras vencer el mes (0 = sin cortesía) */
   courtesy_classes: number;
+  /** Días de antelación con los que se puede reservar (0 = solo hoy) */
+  booking_window_days: number;
   /** URL del logo personalizado (null = logo por defecto) */
   logo_url: string | null;
 }
