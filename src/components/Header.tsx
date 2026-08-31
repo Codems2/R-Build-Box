@@ -1,14 +1,21 @@
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { CalendarCheck, Gift, LogOut, ShieldCheck } from 'lucide-react';
+import { CalendarCheck, Download, Gift, LogOut, ShieldCheck } from 'lucide-react';
 import Logo from './Logo';
 import { useAuth } from '../lib/auth';
 import { todayISO } from '../lib/dates';
+import { isMobileDevice, useInstall } from '../lib/pwa';
 import { memberFullName } from '../lib/types';
 
 export default function Header() {
   const { pathname } = useLocation();
   const { isAdmin, profile, weekStatus, signOut } = useAuth();
+  const { canInstall, promptInstall } = useInstall();
+
+  // Botón «Instalar app» SOLO en el panel de admin, SOLO en PC, y solo si aún
+  // no está instalada (canInstall ya excluye estar en la PWA / ya instalada).
+  const onAdmin = pathname.startsWith('/admin');
+  const showInstall = isAdmin && onAdmin && canInstall && !isMobileDevice();
 
   const firstName = profile?.first_name || memberFullName(profile ?? { first_name: null, last_name: null });
   const showWeek = Boolean(profile && weekStatus && (isAdmin || profile.membership_active));
@@ -51,6 +58,16 @@ export default function Header() {
             >
               Horarios
             </Link>
+          )}
+          {showInstall && (
+            <button
+              type="button"
+              onClick={() => void promptInstall()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-accent-500/30 bg-accent-500/10 px-3.5 py-2 text-sm font-semibold text-accent-200 transition hover:bg-accent-500/15"
+              title="Instalar la app en este ordenador"
+            >
+              <Download className="h-4 w-4" /> Instalar app
+            </button>
           )}
           {showWeek && (
             <span
