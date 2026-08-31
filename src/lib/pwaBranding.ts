@@ -1,20 +1,5 @@
 import { fetchBranding } from './api';
 
-// Datos base del manifiesto (deben coincidir con public/manifest.webmanifest)
-const MANIFEST_BASE = {
-  name: 'Sabai Muay Thai',
-  short_name: 'Sabai Muay Thai',
-  description: 'Reserva tus clases en Sabai Muay Thai.',
-  id: '/',
-  start_url: '/',
-  scope: '/',
-  display: 'standalone',
-  orientation: 'portrait',
-  lang: 'es',
-  background_color: '#0B0A0B',
-  theme_color: '#0B0A0B',
-};
-
 function setIconLink(rel: string, href: string) {
   let link = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
   if (!link) {
@@ -26,32 +11,26 @@ function setIconLink(rel: string, href: string) {
 }
 
 /**
- * Si el box tiene un logo personalizado, reconstruye el manifiesto de la PWA
- * y el favicon con sus iconos, para que las NUEVAS instalaciones y la pestaña
- * del navegador usen el logo del box. Las apps ya instaladas conservan su
- * icono hasta que se reinstalen (limitación de iOS/Android).
+ * Aplica el logo del box al favicon de la pestaña y al icono de iOS.
+ *
+ * IMPORTANTE: NO reemplazamos el manifiesto por un blob. Hacerlo rompía la
+ * instalación de la PWA en escritorio: el navegador dispara
+ * `beforeinstallprompt` con el manifiesto estático al cargar, pero al pulsar
+ * «Instalar» reevalúa el manifiesto vigente; si es un `blob:`, su `start_url`/
+ * `scope` («/») no resuelven bien y el diálogo no se abre (parece que el botón
+ * «no hace nada»). El manifiesto estático /manifest.webmanifest ya trae los
+ * iconos del box, así que las nuevas instalaciones usan el logo correcto.
  */
 export async function applyPwaBranding() {
   try {
     const { icons } = await fetchBranding();
-    if (!icons?.any192 || !icons?.any512 || !icons?.maskable) return; // sin logo → estáticos
-
-    const manifest = {
-      ...MANIFEST_BASE,
-      icons: [
-        { src: icons.any192, sizes: '192x192', type: 'image/png', purpose: 'any' },
-        { src: icons.any512, sizes: '512x512', type: 'image/png', purpose: 'any' },
-        { src: icons.maskable, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-      ],
-    };
-    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
-    setIconLink('manifest', URL.createObjectURL(blob));
-
-    // Pestaña del navegador e icono de iOS
+    if (!icons?.any192) return; // sin logo personalizado → se quedan los estáticos
+    // Solo la pestaña del navegador y el icono de iOS (no afectan a la
+    // instalabilidad, que la decide el manifiesto estático).
     setIconLink('icon', icons.any192);
     setIconLink('apple-touch-icon', icons.any192);
   } catch {
-    /* si algo falla, se quedan el manifiesto e iconos estáticos por defecto */
+    /* si algo falla, se quedan los iconos estáticos por defecto */
   }
 }
 
