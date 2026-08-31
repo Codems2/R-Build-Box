@@ -654,6 +654,46 @@ async function renderIconCanvas(bitmap: ImageBitmap, size: number, frac: number,
 const canvasBlob = (c: HTMLCanvasElement) =>
   new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('canvas'))), 'image/png'));
 
+/**
+ * Imagen 1200x630 (Open Graph) con el logo centrado sobre el fondo de marca.
+ * La usa la vista previa al compartir el enlace (WhatsApp, redes…). Se guarda
+ * en una ruta FIJA del bucket para que <meta og:image> —que es estático— apunte
+ * siempre a la versión actual del logo sin necesidad de redesplegar.
+ */
+const OG_PATH = 'og.png';
+async function renderOgCanvas(bitmap: ImageBitmap, bg = '#0B0A0B') {
+  const w = 1200;
+  const h = 630;
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d');
+  if (!ctx) throw new Error('No se pudo procesar la imagen.');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+  const target = h * 0.78;
+  const s = target / Math.max(bitmap.width, bitmap.height);
+  const lw = bitmap.width * s;
+  const lh = bitmap.height * s;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(bitmap, (w - lw) / 2, (h - lh) / 2, lw, lh);
+  return c;
+}
+
+/** (Re)genera y sube la imagen OG a la ruta fija. No corta el flujo si falla. */
+async function updateOgImage(bitmap: ImageBitmap): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) return;
+  try {
+    const blob = await canvasBlob(await renderOgCanvas(bitmap));
+    await supabase.storage
+      .from('branding')
+      .upload(OG_PATH, blob, { contentType: 'image/png', upsert: true, cacheControl: '60' });
+  } catch {
+    /* si falla, la vista previa conserva la imagen anterior */
+  }
+}
+
 // Especificaciones de los iconos: [nombre, tamaño, fracción del logo]
 const ICON_SPECS: [keyof PwaIcons, number, number][] = [
   ['any192', 192, 0.82],
@@ -698,6 +738,8 @@ export async function uploadLogo(file: File): Promise<Branding> {
       if (r.error) throw new Error('No se pudieron generar los iconos.');
       icons[key] = supabase.storage.from('branding').getPublicUrl(ip).data.publicUrl;
     }
+    // Vista previa al compartir (Open Graph), en ruta fija -> se actualiza sola
+    await updateOgImage(bitmap);
     const { error: upErr } = await supabase
       .from('app_settings')
       .update({ logo_url: logoUrl, pwa_icons: icons, updated_at: new Date().toISOString() })
@@ -735,6 +777,13 @@ export async function resetLogo(): Promise<void> {
     if (error) throw error;
     const old = brandingPaths(prev);
     if (old.length) await supabase.storage.from('branding').remove(old).catch(() => undefined);
+    // Regenera la vista previa a partir del logo por defecto (paquete de la app)
+    try {
+      const bmp = await createImageBitmap(await (await fetch('/logo.png')).blob());
+      await updateOgImage(bmp);
+    } catch {
+      /* ignore */
+    }
     return;
   }
   const cur = readLS<Record<string, unknown>>(LS_SETTINGS, {});
