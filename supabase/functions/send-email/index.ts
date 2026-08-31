@@ -5,7 +5,7 @@
 import { Webhook } from 'https://esm.sh/standardwebhooks@1.0.0';
 
 const BREVO_API = 'https://api.brevo.com/v3/smtp/email';
-const SENDER = { email: 'rbuildbox@gmail.com', name: 'Sabai Muay Thai' };
+const SENDER = { email: 'sabaimuaythaibox@gmail.com', name: 'Sabai Muay Thai' };
 
 // Logo por defecto si no hay uno personalizado o falla la consulta
 const DEFAULT_LOGO = 'https://sabai-muay-thai.vercel.app/icon-192.png';
