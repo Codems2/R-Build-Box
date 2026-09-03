@@ -22,7 +22,7 @@ import {
 import { zipSync } from 'fflate';
 import Modal from '../Modal';
 import AdaptiveActions, { type ActionItem } from '../AdaptiveActions';
-import FinanceChart, { type MonthDatum } from './FinanceChart';
+import FinanceChart, { type ChartRange, type ChartView, type MonthDatum } from './FinanceChart';
 import {
   createFinanceEntry,
   deleteFinanceEntry,
@@ -57,6 +57,29 @@ function shiftYM(ym: string, delta: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+/** Meses (YYYY-MM) que cubre la gráfica según el rango elegido */
+function chartMonths(range: ChartRange, ym: string, year: number): string[] {
+  if (range === 'year') {
+    return Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+  }
+  const len = range === '12m' ? 12 : 6;
+  return Array.from({ length: len }, (_, i) => shiftYM(ym, i - (len - 1)));
+}
+
+// Preferencias de la gráfica, recordadas en este navegador
+const LS_CHART = 'rmbox_finance_chart_v1';
+function readChartPrefs(): { range: ChartRange; view: ChartView } {
+  try {
+    const p = JSON.parse(localStorage.getItem(LS_CHART) ?? '{}') as Partial<{ range: ChartRange; view: ChartView }>;
+    return {
+      range: p.range === '12m' || p.range === 'year' ? p.range : '6m',
+      view: p.view === 'balance' || p.view === 'cumulative' ? p.view : 'both',
+    };
+  } catch {
+    return { range: '6m', view: 'both' };
+  }
+}
+
 function formatYM(ym: string): string {
   const [y, m] = ym.split('-').map(Number);
   const label = new Date(y, m - 1, 1).toLocaleDateString('es-ES', {
@@ -85,13 +108,31 @@ export default function FinanceManager() {
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
+  // Filtros de la gráfica: rango temporal y qué se dibuja
+  const [chartPrefs, setChartPrefs] = useState(readChartPrefs);
+  const [chartYear, setChartYear] = useState(() => Number(currentYM().slice(0, 4)));
+  const setChartRange = (range: ChartRange) => {
+    setChartPrefs((p) => ({ ...p, range }));
+    if (range === 'year') setChartYear(Number(ym.slice(0, 4)));
+  };
+  const setChartView = (view: ChartView) => setChartPrefs((p) => ({ ...p, view }));
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_CHART, JSON.stringify(chartPrefs));
+    } catch {
+      /* sin persistencia */
+    }
+  }, [chartPrefs]);
+
   const load = useCallback(async () => {
     try {
       setError(null);
-      // Una sola consulta de 6 meses: de ella salen el mes visible y la gráfica
-      const months = Array.from({ length: 6 }, (_, i) => shiftYM(ym, i - 5));
-      const { from } = monthRange(months[0]);
-      const { to } = monthRange(ym);
+      // Una sola consulta que cubre el mes visible y el rango de la gráfica
+      const months = chartMonths(chartPrefs.range, ym, chartYear);
+      const first = months[0] < ym ? months[0] : ym;
+      const last = months[months.length - 1] > ym ? months[months.length - 1] : ym;
+      const { from } = monthRange(first);
+      const { to } = monthRange(last);
       const [all, mi] = await Promise.all([fetchFinanceEntries(from, to), fetchMemberIncome()]);
       setEntries(all.filter((e) => e.entry_date.startsWith(ym)));
       // La gráfica y los totales solo reflejan movimientos REALES registrados.
@@ -116,11 +157,11 @@ export default function FinanceManager() {
       console.error(e);
       setError('No se pudieron cargar los movimientos.');
     }
-  }, [ym]);
+  }, [ym, chartPrefs.range, chartYear]);
 
   useEffect(() => {
     setEntries(null);
-    setHistory(null);
+    // La gráfica anterior se mantiene visible mientras llegan los datos nuevos
     void load();
   }, [load]);
 
@@ -247,8 +288,18 @@ export default function FinanceManager() {
         </div>
       </div>
 
-      {/* Evolución de los últimos 6 meses (hasta el mes seleccionado) */}
-      {history !== null && <FinanceChart data={history} />}
+      {/* Evolución: 6/12 meses hasta el mes seleccionado, o un año natural */}
+      {history !== null && (
+        <FinanceChart
+          data={history}
+          range={chartPrefs.range}
+          view={chartPrefs.view}
+          year={chartYear}
+          onRange={setChartRange}
+          onView={setChartView}
+          onYear={setChartYear}
+        />
+      )}
 
       {/* Previsión de cuotas: ORIENTATIVA (socios activos hoy × su cuota).
           No se suma a los ingresos; solo indica cuánto deberías cobrar. */}
