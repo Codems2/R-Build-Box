@@ -93,16 +93,18 @@ export default function FinanceManager() {
       const { from } = monthRange(months[0]);
       const { to } = monthRange(ym);
       const [all, mi] = await Promise.all([fetchFinanceEntries(from, to), fetchMemberIncome()]);
-      const auto = mi.reduce((s, r) => s + r.amount, 0);
       setEntries(all.filter((e) => e.entry_date.startsWith(ym)));
+      // La gráfica y los totales solo reflejan movimientos REALES registrados.
+      // La previsión de cuotas (socios activos × su cuota) es orientativa y se
+      // muestra aparte: nunca se suma a los ingresos.
       setHistory(
         months.map((m) => {
           const monthEntries = all.filter((e) => e.entry_date.startsWith(m));
           return {
             ym: m,
-            income:
-              auto +
-              monthEntries.filter((e) => e.kind === 'income').reduce((s, e) => s + e.amount, 0),
+            income: monthEntries
+              .filter((e) => e.kind === 'income')
+              .reduce((s, e) => s + e.amount, 0),
             expense: monthEntries
               .filter((e) => e.kind === 'expense')
               .reduce((s, e) => s + e.amount, 0),
@@ -123,16 +125,23 @@ export default function FinanceManager() {
   }, [load]);
 
   const totals = useMemo(() => {
-    const auto = (memberIncome ?? []).reduce((s, r) => s + r.amount, 0);
-    const manual = (entries ?? [])
+    // Ingresos/gastos REALES del mes (movimientos registrados, incluidas las
+    // cuotas que se crean al registrar un pago). La previsión va aparte.
+    const income = (entries ?? [])
       .filter((e) => e.kind === 'income')
       .reduce((s, e) => s + e.amount, 0);
     const expense = (entries ?? [])
       .filter((e) => e.kind === 'expense')
       .reduce((s, e) => s + e.amount, 0);
-    const income = auto + manual;
-    return { auto, income, expense, balance: income - expense };
+    const forecast = (memberIncome ?? []).reduce((s, r) => s + r.amount, 0);
+    return { income, expense, balance: income - expense, forecast };
   }, [entries, memberIncome]);
+
+  // La previsión se calcula con los socios activos de HOY, así que solo tiene
+  // sentido para el mes en curso (o futuros), nunca para meses pasados.
+  const showForecast = ym >= currentYM();
+  const forecastPct =
+    totals.forecast > 0 ? Math.min(100, Math.round((totals.income / totals.forecast) * 100)) : 0;
 
   async function handleDelete(entry: FinanceEntry) {
     if (!window.confirm(`¿Eliminar «${entry.concept}» (${EUR.format(entry.amount)})?`)) return;
@@ -241,39 +250,64 @@ export default function FinanceManager() {
       {/* Evolución de los últimos 6 meses (hasta el mes seleccionado) */}
       {history !== null && <FinanceChart data={history} />}
 
-      {/* Cuotas de socios: ingreso automático calculado en vivo */}
-      {memberIncome !== null && (
-        <div className="card mb-2 overflow-hidden">
+      {/* Previsión de cuotas: ORIENTATIVA (socios activos hoy × su cuota).
+          No se suma a los ingresos; solo indica cuánto deberías cobrar. */}
+      {memberIncome !== null && showForecast && (
+        <div className="card mb-2 overflow-hidden border-dashed">
           <button
             type="button"
             onClick={() => setShowBreakdown((v) => !v)}
             className="flex w-full min-w-0 items-center gap-3 p-3.5 text-left"
           >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-500/15 text-accent-300 ring-1 ring-accent-500/25">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-zinc-300 ring-1 ring-white/10">
               <Users className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
               <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm font-semibold text-white">
-                Cuotas de socios
-                <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 ring-1 ring-white/10">
-                  Automático
+                Previsión de cuotas
+                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300 ring-1 ring-amber-500/25">
+                  Orientativo
                 </span>
               </p>
               <p className="mt-0.5 text-xs text-zinc-500">
                 {memberIncome.length === 0
-                  ? 'Sin socios activos este mes'
-                  : `${memberIncome.length} ${memberIncome.length === 1 ? 'socio activo' : 'socios activos'} · según su plan o la cuota estándar`}
+                  ? 'Sin socios activos: no hay cuotas previstas'
+                  : `${ym === currentYM() ? 'Este mes' : 'Ese mes'} deberías cobrar esto con ${memberIncome.length} ${memberIncome.length === 1 ? 'socio activo' : 'socios activos'}`}
               </p>
             </div>
-            <p className="shrink-0 font-display text-sm font-bold text-accent-300">
-              +{EUR.format(totals.auto)}
+            <p className="shrink-0 font-display text-sm font-bold text-zinc-200">
+              {EUR.format(totals.forecast)}
             </p>
             <ChevronDown
               className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform ${showBreakdown ? 'rotate-180' : ''}`}
             />
           </button>
+
+          {/* Cobrado hasta ahora frente a lo previsto */}
+          {totals.forecast > 0 && (
+            <div className="px-3.5 pb-3.5">
+              <div className="mb-1.5 flex items-center justify-between text-[11px]">
+                <span className="text-zinc-500">
+                  Ingresos registrados:{' '}
+                  <span className="font-semibold text-accent-300">{EUR.format(totals.income)}</span>
+                </span>
+                <span className="font-semibold tabular-nums text-zinc-400">{forecastPct}%</span>
+              </div>
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/5">
+                <div
+                  className="h-full rounded-full bg-accent-500 transition-all"
+                  style={{ width: `${forecastPct}%` }}
+                />
+              </div>
+            </div>
+          )}
+
           {showBreakdown && memberIncome.length > 0 && (
             <div className="border-t border-white/5 px-3.5 py-2">
+              <p className="py-1.5 text-[11px] text-zinc-500">
+                Según el plan de cada socio o la cuota estándar. Al registrar su pago, la cuota
+                aparece como ingreso real.
+              </p>
               {memberIncome.map((r) => (
                 <div key={r.member_id} className="flex min-w-0 items-center gap-2 py-1.5">
                   <p className="min-w-0 flex-1 truncate text-xs text-zinc-300">{r.member_name}</p>
