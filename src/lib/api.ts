@@ -4,8 +4,10 @@ import type {
   AppSettings,
   Booking,
   BookingCounts,
+  ClassCredit,
   ClassType,
   ClassTypeInput,
+  MemberUsage,
   FinanceEntry,
   FinanceEntryInput,
   Member,
@@ -454,6 +456,120 @@ export async function fetchMembers(): Promise<Member[]> {
     return data as Member[];
   }
   return readLS<Member[]>(LS_MEMBERS, []);
+}
+
+// ---------------------------------------------------------------------------
+// Consumo de clases y devolución de créditos (solo admin)
+// ---------------------------------------------------------------------------
+
+const LS_CREDITS = 'rmbox_class_credits_v1';
+
+/** Lunes de la semana de `iso` */
+function weekStartOf(iso: string): string {
+  return mondayOfWeekISO(iso);
+}
+
+/** Detalle de consumo de un socio: semana en curso, mes, reservas y créditos */
+export async function fetchMemberUsage(memberId: string): Promise<MemberUsage> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.rpc('member_class_usage', { p_member_id: memberId });
+    if (error) throw error;
+    const d = data as MemberUsage;
+    return {
+      ...d,
+      week_used: Number(d.week_used),
+      week_limit: Number(d.week_limit),
+      month_used: Number(d.month_used),
+      month_limit: d.month_limit != null ? Number(d.month_limit) : null,
+      courtesy_used: Number(d.courtesy_used ?? 0),
+      week_bookings: d.week_bookings ?? [],
+      credits: d.credits ?? [],
+    };
+  }
+  // Demo: todas las reservas locales son del socio de prueba
+  const today = todayISO();
+  const week = weekStartOf(today);
+  const weekEnd = shiftISO(week, 7);
+  const month = today.slice(0, 7);
+  const bookings = readLS<Booking[]>(LS_BOOKINGS, []);
+  const credits = readLS<(ClassCredit & { user_id: string })[]>(LS_CREDITS, []).filter(
+    (c) => c.user_id === memberId,
+  );
+  const sum = (list: ClassCredit[]) => list.reduce((s, c) => s + c.amount, 0);
+  const slots = readLS(LS_SLOTS, DEMO_SLOTS);
+  const types = readLS<ClassType[]>(LS_TYPES, DEMO_CLASS_TYPES);
+  const member = readLS<Member[]>(LS_MEMBERS, []).find((m) => m.id === memberId);
+  const plan = readLS<Plan[]>(LS_PLANS, []).find((p) => p.id === member?.plan_id);
+  const settings = readLS<Partial<AppSettings>>(LS_SETTINGS, {});
+  const weekCredits = credits.filter((c) => c.credit_date >= week && c.credit_date < weekEnd);
+  const monthCredits = credits.filter((c) => c.credit_date.startsWith(month));
+  const weekBookings = bookings.filter((b) => b.class_date >= week && b.class_date < weekEnd);
+  return {
+    week_start: week,
+    week_used: Math.max(0, weekBookings.length - sum(weekCredits)),
+    week_limit: plan?.weekly_limit ?? settings.weekly_class_limit ?? 3,
+    month_used: Math.max(
+      0,
+      bookings.filter((b) => b.class_date.startsWith(month)).length - sum(monthCredits),
+    ),
+    month_limit: plan?.monthly_limit ?? null,
+    courtesy_used: 0,
+    week_bookings: weekBookings.map((b) => {
+      const slot = slots.find((s) => s.id === b.slot_id);
+      return {
+        id: b.id,
+        class_date: b.class_date,
+        status: 'booked' as const,
+        start_time: slot?.start_time ?? null,
+        title:
+          slot?.title ?? types.find((t) => t.id === slot?.class_type_id)?.name ?? 'Clase',
+      };
+    }),
+    credits: monthCredits,
+  };
+}
+
+/** Devuelve N clases a un socio, imputadas a la fecha indicada (hoy por defecto) */
+export async function grantClassCredit(
+  memberId: string,
+  amount: number,
+  date?: string,
+  reason?: string | null,
+): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.rpc('grant_class_credit', {
+      p_member_id: memberId,
+      p_amount: amount,
+      p_date: date ?? null,
+      p_reason: reason ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return;
+  }
+  writeLS(LS_CREDITS, [
+    ...readLS<(ClassCredit & { user_id: string })[]>(LS_CREDITS, []),
+    {
+      id: newId(),
+      user_id: memberId,
+      credit_date: date ?? todayISO(),
+      amount,
+      reason: reason?.trim() || null,
+      created_at: new Date().toISOString(),
+    },
+  ]);
+}
+
+/** Deshace una devolución de clases */
+export async function deleteClassCredit(id: string): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.rpc('delete_class_credit', { p_id: id });
+    if (error) throw new Error(error.message);
+    return;
+  }
+  writeLS(
+    LS_CREDITS,
+    readLS<(ClassCredit & { user_id: string })[]>(LS_CREDITS, []).filter((c) => c.id !== id),
+  );
 }
 
 export async function inviteMember(input: MemberInput): Promise<void> {

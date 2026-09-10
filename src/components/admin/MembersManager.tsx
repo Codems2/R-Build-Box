@@ -12,11 +12,13 @@ import {
   Power,
   ShieldCheck,
   SlidersHorizontal,
+  Ticket,
   Trash2,
   UserPlus,
 } from 'lucide-react';
 import Modal from '../Modal';
 import AdaptiveActions, { type ActionItem } from '../AdaptiveActions';
+import ClassUsageModal from './ClassUsageModal';
 import {
   deleteMember,
   fetchAppSettings,
@@ -51,6 +53,7 @@ export default function MembersManager() {
   const [open, setOpen] = useState(false);
   const [managing, setManaging] = useState<Member | null>(null);
   const [paying, setPaying] = useState<Member | null>(null);
+  const [usageFor, setUsageFor] = useState<Member | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -129,6 +132,12 @@ export default function MembersManager() {
                       icon: Euro,
                       onClick: () => setPaying(m),
                       iconClassName: '!text-accent-300 hover:!text-accent-200',
+                    },
+                    {
+                      key: 'usage',
+                      label: 'Clases y créditos',
+                      icon: Ticket,
+                      onClick: () => setUsageFor(m),
                     },
                     {
                       key: 'manage',
@@ -254,6 +263,26 @@ export default function MembersManager() {
                             −{m.class_debt} clases este mes
                           </span>
                         )}
+                      {/* Consumo de clases: semana en curso y mes natural */}
+                      {m.week_limit != null && (
+                        <button
+                          type="button"
+                          onClick={() => setUsageFor(m)}
+                          title="Ver clases y devolver créditos"
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 transition hover:brightness-125 ${
+                            (m.week_used ?? 0) >= m.week_limit
+                              ? 'bg-brand-500/15 text-brand-300 ring-brand-500/30'
+                              : 'bg-white/5 text-zinc-300 ring-white/10'
+                          }`}
+                        >
+                          <Ticket className="h-3 w-3" />
+                          {m.week_used ?? 0}/{m.week_limit} sem
+                          <span className="text-zinc-500">
+                            · {m.month_used ?? 0}
+                            {m.month_limit != null ? `/${m.month_limit}` : ''} mes
+                          </span>
+                        </button>
+                      )}
                     </div>
                   )}
                   </div>
@@ -266,6 +295,7 @@ export default function MembersManager() {
       )}
 
       <NewMemberModal open={open} onClose={() => setOpen(false)} onDone={load} />
+      <ClassUsageModal member={usageFor} onClose={() => setUsageFor(null)} onChanged={load} />
       <MembershipModal
         member={managing}
         plans={plans}

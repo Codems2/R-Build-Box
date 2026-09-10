@@ -97,6 +97,36 @@ export interface WeekStatus {
   monthly_limit?: number | null;
 }
 
+/** Clase devuelta a un socio por el admin (ajuste manual del consumo) */
+export interface ClassCredit {
+  id: string;
+  credit_date: string;
+  amount: number;
+  reason: string | null;
+  created_at?: string;
+}
+
+/** Reserva del socio dentro de la semana, con su estado */
+export interface UsageBooking {
+  id: string;
+  class_date: string;
+  status: 'booked' | 'late_cancelled';
+  start_time: string | null;
+  title: string;
+}
+
+/** Detalle de consumo de clases de un socio (panel de admin) */
+export interface MemberUsage {
+  week_start: string;
+  week_used: number;
+  week_limit: number;
+  month_used: number;
+  month_limit: number | null;
+  courtesy_used: number;
+  week_bookings: UsageBooking[];
+  credits: ClassCredit[];
+}
+
 export type FinanceKind = 'income' | 'expense';
 
 /** Apunte de ingresos/gastos del box (solo admin) */
@@ -132,6 +162,14 @@ export interface Member {
   courtesy_used?: number;
   /** Deuda de clases arrastrada al periodo pagado */
   class_debt?: number;
+  /** Clases consumidas esta semana (reservas menos créditos devueltos) */
+  week_used?: number;
+  /** Cupo de clases de esta semana */
+  week_limit?: number;
+  /** Clases consumidas en el mes en curso */
+  month_used?: number;
+  /** Tope mensual del plan (null = sin tope) */
+  month_limit?: number | null;
   created_at?: string;
 }
 
