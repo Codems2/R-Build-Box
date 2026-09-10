@@ -35,7 +35,7 @@ const item = {
 };
 
 export default function SchedulePage() {
-  const { slots, classTypes, loading, error } = useSchedule();
+  const { slots, classTypes, exceptions, loading, error } = useSchedule();
   const { refreshProfile, profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
 
@@ -94,11 +94,11 @@ export default function SchedulePage() {
   const byDate = useMemo(() => {
     const map: Record<string, Session[]> = {};
     for (const d of weekDates) map[d] = [];
-    for (const s of sessionsForWeek(slots, weekMonday)) map[s.date]?.push(s);
+    for (const s of sessionsForWeek(slots, weekMonday, exceptions)) map[s.date]?.push(s);
     for (const d of weekDates)
       map[d].sort((a, b) => a.slot.start_time.localeCompare(b.slot.start_time));
     return map;
-  }, [slots, weekMonday, weekDates]);
+  }, [slots, weekMonday, weekDates, exceptions]);
 
   const kindsInUse = useMemo(() => {
     const set = new Set<SlotKind>(slots.map((s) => s.kind));

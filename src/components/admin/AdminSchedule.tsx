@@ -15,9 +15,10 @@ import {
 import SlotForm from './SlotForm';
 import BookingsModal from './BookingsModal';
 import GuestBookingModal from './GuestBookingModal';
+import DeleteSlotModal from './DeleteSlotModal';
 import AdaptiveActions, { type ActionItem } from '../AdaptiveActions';
 import { useSchedule } from '../../hooks/useSchedule';
-import { createSlot, deleteSlot, fetchBookingCounts, updateSlot } from '../../lib/api';
+import { createSlot, deleteSlot, deleteSlotOccurrence, fetchBookingCounts, updateSlot } from '../../lib/api';
 import { sessionsForWeek } from '../../lib/schedule';
 import {
   formatDayShort,
@@ -41,7 +42,7 @@ import {
 } from '../../lib/types';
 
 export default function AdminSchedule() {
-  const { slots, classTypes, reload } = useSchedule(true);
+  const { slots, classTypes, exceptions, reload } = useSchedule(true);
   const [weekMonday, setWeekMonday] = useState(() => mondayOfWeekISO(todayISO()));
   const weekDates = useMemo(() => weekDatesISO(weekMonday), [weekMonday]);
   const [selectedDate, setSelectedDate] = useState(todayISO());
@@ -50,6 +51,7 @@ export default function AdminSchedule() {
   const [formDate, setFormDate] = useState(todayISO());
   const [viewingBookings, setViewingBookings] = useState<ScheduleSlot | null>(null);
   const [guestFor, setGuestFor] = useState<{ slot: ScheduleSlot; date: string } | null>(null);
+  const [deleting, setDeleting] = useState<{ slot: ScheduleSlot; date: string } | null>(null);
   const [counts, setCounts] = useState<BookingCounts>({});
 
   const loadCounts = useCallback(() => {
@@ -67,10 +69,10 @@ export default function AdminSchedule() {
   const byDate = useMemo(() => {
     const map: Record<string, Session[]> = {};
     for (const d of weekDates) map[d] = [];
-    for (const s of sessionsForWeek(slots, weekMonday)) map[s.date]?.push(s);
+    for (const s of sessionsForWeek(slots, weekMonday, exceptions)) map[s.date]?.push(s);
     for (const d of weekDates) map[d].sort((a, b) => a.slot.start_time.localeCompare(b.slot.start_time));
     return map;
-  }, [slots, weekMonday, weekDates]);
+  }, [slots, weekMonday, weekDates, exceptions]);
 
   // Día visible seguro (evita leer una fecha que no cae en la semana actual)
   const activeDate = byDate[selectedDate] ? selectedDate : weekDates[0];
@@ -92,12 +94,11 @@ export default function AdminSchedule() {
     else await createSlot(input);
     await reload();
   }
-  async function handleDelete(slot: ScheduleSlot) {
-    const msg = slot.is_recurring
-      ? `¿Eliminar «${slotTitle(slot, classTypes)}»? Es una clase recurrente: se quitará de TODAS las semanas.`
-      : `¿Eliminar «${slotTitle(slot, classTypes)}» del ${slot.class_date}?`;
-    if (!window.confirm(msg)) return;
-    await deleteSlot(slot.id);
+  /** Elimina solo la sesión de ese día, o la clase entera. */
+  async function handleDelete(scope: 'one' | 'all') {
+    if (!deleting) return;
+    if (scope === 'one') await deleteSlotOccurrence(deleting.slot.id, deleting.date);
+    else await deleteSlot(deleting.slot.id);
     await reload();
     loadCounts();
   }
@@ -225,7 +226,13 @@ export default function AdminSchedule() {
                   onClick: () => void toggleActive(slot),
                 },
                 { key: 'edit', label: 'Editar', icon: Pencil, onClick: () => openEdit(slot) },
-                { key: 'delete', label: 'Eliminar', icon: Trash2, onClick: () => void handleDelete(slot), danger: true },
+                {
+                  key: 'delete',
+                  label: 'Eliminar',
+                  icon: Trash2,
+                  onClick: () => setDeleting({ slot, date: activeDate }),
+                  danger: true,
+                },
               ];
               return (
                 <motion.div
@@ -312,6 +319,15 @@ export default function AdminSchedule() {
         classDate={guestFor?.date ?? null}
         classTypes={classTypes}
         onDone={loadCounts}
+      />
+      <DeleteSlotModal
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        slot={deleting?.slot ?? null}
+        classDate={deleting?.date ?? null}
+        classTypes={classTypes}
+        bookedCount={deleting ? (counts[countKey(deleting.slot.id, deleting.date)] ?? 0) : 0}
+        onDelete={handleDelete}
       />
     </section>
   );

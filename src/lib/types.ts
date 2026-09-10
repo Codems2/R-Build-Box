@@ -27,6 +27,15 @@ export interface ScheduleSlot {
   class_date: string | null;
 }
 
+/**
+ * Sesión suelta eliminada de una clase recurrente: la clase sigue existiendo
+ * el resto de semanas, pero ese día concreto no se celebra.
+ */
+export interface SlotException {
+  slot_id: string;
+  class_date: string;
+}
+
 /** Una sesión concreta de un hueco en una fecha (lo que se muestra y reserva) */
 export interface Session {
   slot: ScheduleSlot;

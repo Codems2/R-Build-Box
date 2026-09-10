@@ -15,6 +15,7 @@ import type {
   Plan,
   PlanInput,
   ScheduleSlot,
+  SlotException,
   SlotInput,
   WeekStatus,
 } from './types';
@@ -26,6 +27,7 @@ const LS_PLANS = 'rmbox_plans_v2';
 const DEFAULT_SETTINGS: AppSettings = { weekly_class_limit: 3, default_monthly_fee: 60, courtesy_classes: 2, booking_window_days: 2, logo_url: null };
 
 const LS_SLOTS = 'rmbox_slots_v1';
+const LS_SLOT_EXCEPTIONS = 'rmbox_slot_exceptions_v1';
 const LS_TYPES = 'rmbox_class_types_v1';
 const LS_BOOKINGS = 'rmbox_bookings_v1';
 const LS_MEMBERS = 'rmbox_members_v1';
@@ -161,6 +163,7 @@ export async function updateSlot(id: string, input: SlotInput): Promise<void> {
   );
 }
 
+/** Elimina la clase entera: si es recurrente, desaparece de todas las semanas. */
 export async function deleteSlot(id: string): Promise<void> {
   if (isSupabaseConfigured && supabase) {
     const { error } = await supabase
@@ -178,6 +181,56 @@ export async function deleteSlot(id: string): Promise<void> {
     LS_BOOKINGS,
     readLS<Booking[]>(LS_BOOKINGS, []).filter((b) => b.slot_id !== id),
   );
+  writeLS(
+    LS_SLOT_EXCEPTIONS,
+    readLS<SlotException[]>(LS_SLOT_EXCEPTIONS, []).filter((e) => e.slot_id !== id),
+  );
+}
+
+/** Sesiones sueltas eliminadas de clases recurrentes */
+export async function fetchSlotExceptions(): Promise<SlotException[]> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.from('slot_exceptions').select('slot_id, class_date');
+    if (error) throw error;
+    return data as SlotException[];
+  }
+  return readLS<SlotException[]>(LS_SLOT_EXCEPTIONS, []);
+}
+
+/**
+ * Elimina SOLO la sesión de un día concreto. Si la clase es recurrente sigue
+ * existiendo el resto de semanas; si es puntual, se borra la clase entera.
+ * Devuelve cuántas reservas de ese día se han cancelado.
+ */
+export async function deleteSlotOccurrence(
+  slotId: string,
+  classDate: string,
+): Promise<{ bookings_removed: number }> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.rpc('delete_class_occurrence', {
+      p_slot_id: slotId,
+      p_class_date: classDate,
+    });
+    if (error) throw toBookingError(error.message);
+    const d = data as { bookings_removed?: number };
+    return { bookings_removed: Number(d?.bookings_removed ?? 0) };
+  }
+  const slot = readLS(LS_SLOTS, DEMO_SLOTS).find((s) => s.id === slotId);
+  const bookings = readLS<Booking[]>(LS_BOOKINGS, []);
+  const removed = bookings.filter((b) => b.slot_id === slotId && b.class_date === classDate).length;
+  writeLS(
+    LS_BOOKINGS,
+    bookings.filter((b) => !(b.slot_id === slotId && b.class_date === classDate)),
+  );
+  if (slot && !slot.is_recurring) {
+    writeLS(LS_SLOTS, readLS(LS_SLOTS, DEMO_SLOTS).filter((s) => s.id !== slotId));
+  } else {
+    const list = readLS<SlotException[]>(LS_SLOT_EXCEPTIONS, []);
+    if (!list.some((e) => e.slot_id === slotId && e.class_date === classDate)) {
+      writeLS(LS_SLOT_EXCEPTIONS, [...list, { slot_id: slotId, class_date: classDate }]);
+    }
+  }
+  return { bookings_removed: removed };
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +255,7 @@ const BOOKING_ERROR_MESSAGES: Record<string, string> = {
   NOT_FOUND: 'No se encontró la reserva.',
   TOO_FAR: 'Todavía no puedes reservar esta clase. Las reservas se abren 2 días antes.',
   CLASS_STARTED: 'Esta clase ya ha empezado.',
+  CLASS_CANCELLED: 'Esa sesión se ha cancelado.',
 };
 
 function toBookingError(raw: string): BookingError {
