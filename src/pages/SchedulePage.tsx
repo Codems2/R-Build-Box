@@ -175,7 +175,7 @@ export default function SchedulePage() {
           Sabai Muay Thai
         </motion.h1>
         <p className="mt-2 text-xs tracking-wide text-zinc-500 sm:text-sm">
-          Corazón de luchador · el arte de las ocho armas
+          Sanuk sabai saduak
         </p>
       </section>
 
