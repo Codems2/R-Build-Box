@@ -15,6 +15,32 @@ export interface ActionItem {
   iconClassName?: string;
 }
 
+/** Separación entre el botón y el menú, y margen mínimo con el borde */
+const GAP = 6;
+const MARGIN = 8;
+/** Alto aproximado de una opción y padding del contenedor (para estimar) */
+const ITEM_H = 38;
+const MENU_PADDING = 8;
+/** Alto mínimo del menú: por debajo de esto hace scroll interno */
+const MIN_MENU_H = 120;
+
+interface MenuPos {
+  /** Se despliega hacia arriba porque abajo no cabe */
+  up: boolean;
+  top?: number;
+  bottom?: number;
+  right: number;
+  maxHeight: number;
+}
+
+const samePos = (a: MenuPos | null, b: MenuPos) =>
+  a != null &&
+  a.up === b.up &&
+  a.top === b.top &&
+  a.bottom === b.bottom &&
+  a.right === b.right &&
+  Math.abs(a.maxHeight - b.maxHeight) < 1;
+
 /**
  * Muestra las acciones en línea (iconos) cuando caben; si el espacio se
  * reduce y se solaparían, las colapsa en un botón «⋮» que abre un menú
@@ -38,7 +64,8 @@ export default function AdaptiveActions({
   );
   const collapsed = small || overflow;
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<MenuPos | null>(null);
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 639px)');
@@ -47,16 +74,48 @@ export default function AdaptiveActions({
     return () => mq.removeEventListener('change', on);
   }, []);
 
-  const place = () => {
+  /**
+   * Coloca el menú junto al botón. Por defecto se abre hacia abajo, pero si no
+   * cabe (las últimas tarjetas de la lista quedan pegadas al borde inferior) se
+   * despliega hacia arriba. Si tampoco cabe ahí, se limita la altura y el menú
+   * hace scroll, de modo que nunca se corta ninguna opción.
+   */
+  const computePos = (height?: number): MenuPos | null => {
     const t = triggerRef.current;
-    if (!t) return;
+    if (!t) return null;
     const r = t.getBoundingClientRect();
-    setPos({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) });
+    const vh = window.innerHeight;
+    const below = vh - r.bottom - GAP - MARGIN;
+    const above = r.top - GAP - MARGIN;
+    // Sin medir aún, estimamos la altura por el número de opciones
+    const needed = height ?? items.length * ITEM_H + MENU_PADDING;
+    const up = needed > below && above > below;
+    const space = Math.max(MIN_MENU_H, up ? above : below);
+    return {
+      up,
+      top: up ? undefined : r.bottom + GAP,
+      bottom: up ? vh - r.top + GAP : undefined,
+      right: Math.max(MARGIN, window.innerWidth - r.right),
+      maxHeight: Math.min(space, Math.max(needed, MIN_MENU_H)),
+    };
   };
+
   const toggle = () => {
-    if (!open) place();
+    if (!open) setPos(computePos());
     setOpen((v) => !v);
   };
+
+  // Una vez pintado, se recoloca con la altura real (la estimación puede
+  // quedarse corta si alguna opción ocupa dos líneas).
+  useLayoutEffect(() => {
+    if (!open) return;
+    const el = menuRef.current;
+    if (!el) return;
+    const next = computePos(el.scrollHeight + MENU_PADDING);
+    if (next) setPos((p) => (samePos(p, next) ? p : next));
+    // Solo al abrir: después el menú se cierra con scroll o resize
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useLayoutEffect(() => {
     const host = hostRef.current;
@@ -80,12 +139,19 @@ export default function AdaptiveActions({
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
     const close = () => setOpen(false);
+    // Si el propio menú tiene scroll interno (pantallas muy bajas), moverlo
+    // dentro no debe cerrarlo: solo cierra el scroll de la página.
+    const onScroll = (e: Event) => {
+      const el = menuRef.current;
+      if (el && e.target instanceof Node && el.contains(e.target)) return;
+      close();
+    };
     window.addEventListener('keydown', onKey);
-    window.addEventListener('scroll', close, true);
+    window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', close);
     return () => {
       window.removeEventListener('keydown', onKey);
-      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', close);
     };
   }, [open]);
@@ -133,13 +199,19 @@ export default function AdaptiveActions({
                     onClick={() => setOpen(false)}
                   />
                   <motion.div
+                    ref={menuRef}
                     role="menu"
-                    initial={{ opacity: 0, y: 4, scale: 0.98 }}
+                    initial={{ opacity: 0, y: pos.up ? -4 : 4, scale: 0.98 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                    exit={{ opacity: 0, y: pos.up ? -4 : 4, scale: 0.98 }}
                     transition={{ duration: 0.13 }}
-                    style={{ top: pos.top, right: pos.right }}
-                    className="fixed z-[100] w-48 overflow-hidden rounded-xl border border-white/10 bg-ink-900/95 p-1 shadow-2xl shadow-black/60 backdrop-blur"
+                    style={{
+                      top: pos.top,
+                      bottom: pos.bottom,
+                      right: pos.right,
+                      maxHeight: pos.maxHeight,
+                    }}
+                    className="fixed z-[100] w-48 overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-ink-900/95 p-1 shadow-2xl shadow-black/60 backdrop-blur"
                   >
                     {items.map((it) => (
                       <button
