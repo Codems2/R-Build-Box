@@ -4,6 +4,7 @@ import {
   Check,
   Gift,
   Loader2,
+  Minus,
   Plus,
   RotateCcw,
   Trash2,
@@ -28,7 +29,8 @@ interface Props {
 export default function ClassUsageModal({ member, onClose, onChanged }: Props) {
   const [usage, setUsage] = useState<MemberUsage | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [granting, setGranting] = useState(false);
+  /** null = sin formulario; 'add' = devolver una clase; 'remove' = quitarla */
+  const [adjusting, setAdjusting] = useState<'add' | 'remove' | null>(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [busyCredit, setBusyCredit] = useState<string | null>(null);
@@ -49,24 +51,32 @@ export default function ClassUsageModal({ member, onClose, onChanged }: Props) {
   useEffect(() => {
     if (!memberId) return;
     setUsage(null);
-    setGranting(false);
+    setAdjusting(null);
     setReason('');
     void load();
   }, [memberId, load]);
 
-  async function handleGrant() {
-    if (!memberId) return;
+  /** Devuelve (+1) o quita (−1) una clase de la semana en curso */
+  async function handleAdjust() {
+    if (!memberId || !adjusting) return;
+    const amount = adjusting === 'add' ? 1 : -1;
     setBusy(true);
     setError(null);
     try {
-      await grantClassCredit(memberId, 1, todayISO(), reason);
+      await grantClassCredit(memberId, amount, todayISO(), reason);
       setReason('');
-      setGranting(false);
+      setAdjusting(null);
       await load();
       await onChanged();
     } catch (e) {
       console.error(e);
-      setError(e instanceof Error ? e.message : 'No se pudo devolver la clase.');
+      setError(
+        e instanceof Error
+          ? e.message
+          : amount > 0
+            ? 'No se pudo devolver la clase.'
+            : 'No se pudo quitar la clase.',
+      );
     } finally {
       setBusy(false);
     }
@@ -129,9 +139,15 @@ export default function ClassUsageModal({ member, onClose, onChanged }: Props) {
             </div>
           </div>
 
-          {/* Devolver una clase */}
-          {granting ? (
-            <div className="rounded-xl border border-accent-500/25 bg-accent-500/[0.07] p-3.5">
+          {/* Ajustar el consumo: devolver o quitar una clase */}
+          {adjusting ? (
+            <div
+              className={`rounded-xl border p-3.5 ${
+                adjusting === 'add'
+                  ? 'border-accent-500/25 bg-accent-500/[0.07]'
+                  : 'border-amber-500/25 bg-amber-500/[0.07]'
+              }`}
+            >
               <label
                 htmlFor="credit-reason"
                 className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-400"
@@ -142,18 +158,21 @@ export default function ClassUsageModal({ member, onClose, onChanged }: Props) {
                 id="credit-reason"
                 className="input"
                 maxLength={200}
-                placeholder="Ej. canceló tarde por trabajo"
+                placeholder={
+                  adjusting === 'add' ? 'Ej. canceló tarde por trabajo' : 'Ej. vino sin reservar'
+                }
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
               />
               <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
-                Se le devuelve 1 clase de esta semana. Su contador baja al momento y podrá reservar
-                una clase más.
+                {adjusting === 'add'
+                  ? 'Se le devuelve 1 clase de esta semana. Su contador baja al momento y podrá reservar una clase más.'
+                  : 'Se le descuenta 1 clase de esta semana. Su contador sube al momento y podrá reservar una clase menos.'}
               </p>
               <div className="mt-3 flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setGranting(false)}
+                  onClick={() => setAdjusting(null)}
                   disabled={busy}
                   className="btn-ghost flex-1 !py-2 text-xs"
                 >
@@ -161,31 +180,52 @@ export default function ClassUsageModal({ member, onClose, onChanged }: Props) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleGrant()}
+                  onClick={() => void handleAdjust()}
                   disabled={busy}
                   className="btn-primary flex-1 !py-2 text-xs"
                 >
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                  {busy ? 'Devolviendo…' : 'Devolver clase'}
+                  {busy
+                    ? 'Guardando…'
+                    : adjusting === 'add'
+                      ? 'Devolver clase'
+                      : 'Quitar clase'}
                 </button>
               </div>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => setGranting(true)}
-              className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-3 text-left transition hover:border-accent-500/40 hover:bg-accent-500/[0.07]"
-            >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-500/15 text-accent-300 ring-1 ring-accent-500/25">
-                <Plus className="h-4 w-4" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-white">Devolver una clase</span>
-                <span className="mt-0.5 block text-xs text-zinc-400">
-                  Le suma un crédito de esta semana, por ejemplo tras una cancelación tardía.
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setAdjusting('add')}
+                className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-3 text-left transition hover:border-accent-500/40 hover:bg-accent-500/[0.07]"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-500/15 text-accent-300 ring-1 ring-accent-500/25">
+                  <Plus className="h-4 w-4" />
                 </span>
-              </span>
-            </button>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-white">Devolver una clase</span>
+                  <span className="mt-0.5 block text-xs text-zinc-400">
+                    Por ejemplo, tras una cancelación tardía que le perdonas.
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdjusting('remove')}
+                className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-3 text-left transition hover:border-amber-500/40 hover:bg-amber-500/[0.07]"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/25">
+                  <Minus className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-white">Quitar una clase</span>
+                  <span className="mt-0.5 block text-xs text-zinc-400">
+                    Por ejemplo, si entrenó sin haber reservado su plaza.
+                  </span>
+                </span>
+              </button>
+            </div>
           )}
 
           {/* Reservas de la semana */}
@@ -225,45 +265,58 @@ export default function ClassUsageModal({ member, onClose, onChanged }: Props) {
             )}
           </div>
 
-          {/* Clases devueltas este mes */}
+          {/* Ajustes manuales de este mes */}
           {usage.credits.length > 0 && (
             <div>
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-                Clases devueltas este mes
+                Ajustes de este mes
               </p>
               <div className="space-y-1.5">
-                {usage.credits.map((c) => (
-                  <div
-                    key={c.id}
-                    className="flex min-w-0 items-center gap-2.5 rounded-xl border border-accent-500/20 bg-accent-500/[0.06] px-3 py-2"
-                  >
-                    <Gift className="h-3.5 w-3.5 shrink-0 text-accent-300" />
-                    <span className="min-w-0 flex-1 truncate text-xs text-zinc-200">
-                      +{c.amount} {c.amount === 1 ? 'clase' : 'clases'}
-                      {c.reason ? <span className="text-zinc-400"> · {c.reason}</span> : null}
-                    </span>
-                    <span className="shrink-0 text-[11px] capitalize text-zinc-500">
-                      {new Date(`${c.credit_date}T00:00:00`).toLocaleDateString('es-ES', {
-                        day: 'numeric',
-                        month: 'short',
-                      })}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => void handleUndo(c.id)}
-                      disabled={busyCredit === c.id}
-                      className="shrink-0 rounded-lg p-1 text-zinc-500 transition hover:text-brand-300 disabled:opacity-50"
-                      aria-label="Deshacer devolución"
-                      title="Deshacer devolución"
+                {usage.credits.map((c) => {
+                  const suma = c.amount > 0;
+                  const n = Math.abs(c.amount);
+                  return (
+                    <div
+                      key={c.id}
+                      className={`flex min-w-0 items-center gap-2.5 rounded-xl border px-3 py-2 ${
+                        suma
+                          ? 'border-accent-500/20 bg-accent-500/[0.06]'
+                          : 'border-amber-500/20 bg-amber-500/[0.06]'
+                      }`}
                     >
-                      {busyCredit === c.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      {suma ? (
+                        <Gift className="h-3.5 w-3.5 shrink-0 text-accent-300" />
                       ) : (
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Minus className="h-3.5 w-3.5 shrink-0 text-amber-300" />
                       )}
-                    </button>
-                  </div>
-                ))}
+                      <span className="min-w-0 flex-1 truncate text-xs text-zinc-200">
+                        {suma ? '+' : '−'}
+                        {n} {n === 1 ? 'clase' : 'clases'}
+                        {c.reason ? <span className="text-zinc-400"> · {c.reason}</span> : null}
+                      </span>
+                      <span className="shrink-0 text-[11px] capitalize text-zinc-500">
+                        {new Date(`${c.credit_date}T00:00:00`).toLocaleDateString('es-ES', {
+                          day: 'numeric',
+                          month: 'short',
+                        })}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void handleUndo(c.id)}
+                        disabled={busyCredit === c.id}
+                        className="shrink-0 rounded-lg p-1 text-zinc-500 transition hover:text-brand-300 disabled:opacity-50"
+                        aria-label="Deshacer ajuste"
+                        title="Deshacer ajuste"
+                      >
+                        {busyCredit === c.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
