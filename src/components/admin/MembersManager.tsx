@@ -14,11 +14,13 @@ import {
   SlidersHorizontal,
   Ticket,
   Trash2,
+  UserPen,
   UserPlus,
 } from 'lucide-react';
 import Modal from '../Modal';
 import AdaptiveActions, { type ActionItem } from '../AdaptiveActions';
 import ClassUsageModal from './ClassUsageModal';
+import EditMemberModal from './EditMemberModal';
 import {
   deleteMember,
   fetchAppSettings,
@@ -54,6 +56,7 @@ export default function MembersManager() {
   const [managing, setManaging] = useState<Member | null>(null);
   const [paying, setPaying] = useState<Member | null>(null);
   const [usageFor, setUsageFor] = useState<Member | null>(null);
+  const [editing, setEditing] = useState<Member | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -126,6 +129,12 @@ export default function MembersManager() {
               m.role === 'admin'
                 ? []
                 : [
+                    {
+                      key: 'edit',
+                      label: 'Editar datos',
+                      icon: UserPen,
+                      onClick: () => setEditing(m),
+                    },
                     {
                       key: 'pay',
                       label: 'Registrar pago',
@@ -296,6 +305,7 @@ export default function MembersManager() {
 
       <NewMemberModal open={open} onClose={() => setOpen(false)} onDone={load} />
       <ClassUsageModal member={usageFor} onClose={() => setUsageFor(null)} onChanged={load} />
+      <EditMemberModal member={editing} onClose={() => setEditing(null)} onSaved={load} />
       <MembershipModal
         member={managing}
         plans={plans}
