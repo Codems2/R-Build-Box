@@ -657,7 +657,7 @@ export async function registerPayment(
   createIncome: boolean,
   amount?: number | null,
   paidAt?: string | null,
-): Promise<{ paid_until: string; income_created: boolean; courtesy_deducted: number }> {
+): Promise<{ paid_until: string; income_created: boolean; courtesy_reset: number }> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.rpc('register_payment', {
       p_member_id: memberId,
@@ -666,15 +666,16 @@ export async function registerPayment(
       p_paid_at: paidAt ?? null,
     });
     if (error) throw error;
-    const d = data as { paid_until: string; income_created: boolean; courtesy_deducted?: number };
-    return { ...d, courtesy_deducted: d.courtesy_deducted ?? 0 };
+    const d = data as { paid_until: string; income_created: boolean; courtesy_reset?: number };
+    return { ...d, courtesy_reset: d.courtesy_reset ?? 0 };
   }
   // Demo: mes rodante sobre localStorage + ingreso opcional
   const members = readLS<Member[]>(LS_MEMBERS, []);
   const m = members.find((x) => x.id === memberId);
   const today = todayISO();
   const ref = paidAt || today; // fecha de referencia del pago (indicada o hoy)
-  const courtesyDeducted = m?.paid_until && m.paid_until < today ? m.courtesy_used ?? 0 : 0;
+  // Las clases de cortesía usadas se perdonan al pagar: el contador vuelve a 0
+  const courtesyReset = m?.paid_until && m.paid_until < today ? m.courtesy_used ?? 0 : 0;
   const base = m?.paid_until && m.paid_until > ref ? m.paid_until : ref;
   const d = new Date(`${base}T00:00:00`);
   d.setMonth(d.getMonth() + 1);
@@ -683,7 +684,15 @@ export async function registerPayment(
     LS_MEMBERS,
     members.map((x) =>
       x.id === memberId
-        ? { ...x, membership_active: true, paid_until: paidUntil, class_debt: courtesyDeducted, courtesy_used: 0 }
+        ? {
+            ...x,
+            membership_active: true,
+            paid_until: paidUntil,
+            class_debt: 0,
+            courtesy_used: 0,
+            week_used: Math.max(0, (x.week_used ?? 0) - courtesyReset),
+            month_used: Math.max(0, (x.month_used ?? 0) - courtesyReset),
+          }
         : x,
     ),
   );
@@ -697,7 +706,7 @@ export async function registerPayment(
     ]);
     income = true;
   }
-  return { paid_until: paidUntil, income_created: income, courtesy_deducted: courtesyDeducted };
+  return { paid_until: paidUntil, income_created: income, courtesy_reset: courtesyReset };
 }
 
 /** Solo admin: activar/desactivar la membresía o cambiar el plan de un socio */

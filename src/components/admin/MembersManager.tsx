@@ -377,7 +377,7 @@ function PaymentModal({
       }
       const res = await registerPayment(member.id, createIncome, value, paidAt || null);
       setDoneUntil(res.paid_until);
-      setDeducted(res.courtesy_deducted);
+      setDeducted(res.courtesy_reset);
       await onSaved();
     } catch (err) {
       console.error(err);
@@ -406,9 +406,10 @@ function PaymentModal({
               <span className="font-medium capitalize text-zinc-200">{formatDateES(doneUntil)}</span>.
             </p>
             {deducted > 0 && (
-              <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200 ring-1 ring-amber-500/25">
-                <Gift className="h-3.5 w-3.5" /> Se han restado {deducted}{' '}
-                {deducted === 1 ? 'clase' : 'clases'} de cortesía de este mes.
+              <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-accent-500/10 px-3 py-1.5 text-xs text-accent-200 ring-1 ring-accent-500/25">
+                <Gift className="h-3.5 w-3.5" /> Se {deducted === 1 ? 'le ha' : 'le han'} perdonado{' '}
+                {deducted} {deducted === 1 ? 'clase' : 'clases'} de cortesía: su contador vuelve a
+                cero.
               </p>
             )}
           </div>
