@@ -1,14 +1,12 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
 import {
   BadgeCheck,
-  CalendarClock,
   Clock3,
   Euro,
   Gift,
   Loader2,
   Mail,
-  Phone,
   Power,
   ShieldCheck,
   SlidersHorizontal,
@@ -21,6 +19,15 @@ import Modal from '../Modal';
 import AdaptiveActions, { type ActionItem } from '../AdaptiveActions';
 import ClassUsageModal from './ClassUsageModal';
 import EditMemberModal from './EditMemberModal';
+import MemberSheet from './MemberSheet';
+import MemberFilters, {
+  matchesEstado,
+  matchesQuery,
+  memberFlags,
+  ordenar,
+  type EstadoKey,
+  type OrdenKey,
+} from './MemberFilters';
 import {
   deleteMember,
   fetchAppSettings,
@@ -57,7 +64,13 @@ export default function MembersManager() {
   const [paying, setPaying] = useState<Member | null>(null);
   const [usageFor, setUsageFor] = useState<Member | null>(null);
   const [editing, setEditing] = useState<Member | null>(null);
+  const [sheetFor, setSheetFor] = useState<Member | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  // Filtros de la lista
+  const [query, setQuery] = useState('');
+  const [estado, setEstado] = useState<EstadoKey>('todos');
+  const [orden, setOrden] = useState<OrdenKey>('numero');
 
   const load = useCallback(async () => {
     try {
@@ -76,6 +89,44 @@ export default function MembersManager() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Cuántos socios hay en cada estado (para los contadores de los chips)
+  const counts = useMemo(() => {
+    const base: Record<EstadoKey, number> = {
+      todos: members?.length ?? 0,
+      al_dia: 0,
+      vence_pronto: 0,
+      vencidos: 0,
+      sin_activar: 0,
+      inactivos: 0,
+    };
+    for (const m of members ?? []) {
+      const f = memberFlags(m, courtesyClasses);
+      for (const k of ['al_dia', 'vence_pronto', 'vencidos', 'sin_activar', 'inactivos'] as const) {
+        if (matchesEstado(m, k, f)) base[k] += 1;
+      }
+    }
+    return base;
+  }, [members, courtesyClasses]);
+
+  // Lista ya buscada, filtrada y ordenada
+  const visibles = useMemo(() => {
+    const list = (members ?? []).filter(
+      (m) => matchesQuery(m, query) && matchesEstado(m, estado, memberFlags(m, courtesyClasses)),
+    );
+    return ordenar(list, orden);
+  }, [members, query, estado, orden, courtesyClasses]);
+
+  const resetFiltros = () => {
+    setQuery('');
+    setEstado('todos');
+  };
+
+  /** Abre una gestión desde la ficha, cerrando antes la ficha */
+  const desdeFicha = (accion: (m: Member) => void) => (m: Member) => {
+    setSheetFor(null);
+    accion(m);
+  };
 
   async function handleResend(m: Member) {
     if (!m.email) return;
@@ -123,8 +174,34 @@ export default function MembersManager() {
           Aún no hay socios. Pulsa «Dar de alta» para invitar al primero.
         </p>
       ) : (
-        <div className="space-y-2">
-          {members.map((m) => {
+        <>
+          <MemberFilters
+            query={query}
+            onQuery={setQuery}
+            estado={estado}
+            onEstado={setEstado}
+            orden={orden}
+            onOrden={setOrden}
+            counts={counts}
+            visibles={visibles.length}
+            total={members.length}
+            onReset={resetFiltros}
+          />
+
+          {visibles.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center text-sm text-zinc-500">
+              Ningún socio coincide con la búsqueda.{' '}
+              <button
+                type="button"
+                onClick={resetFiltros}
+                className="font-semibold text-brand-300 transition hover:text-brand-200"
+              >
+                Quitar filtros
+              </button>
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {visibles.map((m) => {
             const actionItems: ActionItem[] =
               m.role === 'admin'
                 ? []
@@ -181,131 +258,108 @@ export default function MembersManager() {
                 layout
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="card min-w-0 p-3.5"
+                className="card min-w-0 p-2.5"
               >
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-600/15 font-display text-xs font-bold text-brand-300 ring-1 ring-brand-500/20">
-                    #{m.member_no}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <p className="truncate text-sm font-semibold text-white">{memberFullName(m)}</p>
-                  {m.role === 'admin' && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-brand-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-300 ring-1 ring-brand-500/30">
-                      <ShieldCheck className="h-3 w-3" /> Admin
+                <div className="flex min-w-0 items-center gap-2.5">
+                  {/* Toda la zona de datos abre la ficha, donde está el detalle */}
+                  <button
+                    type="button"
+                    onClick={() => setSheetFor(m)}
+                    className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                    aria-label={`Ver ficha de ${memberFullName(m)}`}
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-600/15 font-display text-[11px] font-bold text-brand-300 ring-1 ring-brand-500/20">
+                      #{m.member_no}
                     </span>
-                  )}
-                  {!m.activated && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                      <Clock3 className="h-3 w-3" /> Sin activar
-                    </span>
-                  )}
-                </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-zinc-500">
-                  {m.email && (
-                    <span className="inline-flex items-center gap-1">
-                      <Mail className="h-3 w-3" /> {m.email}
-                    </span>
-                  )}
-                  {m.phone && (
-                    <span className="inline-flex items-center gap-1">
-                      <Phone className="h-3 w-3" /> {m.phone}
-                    </span>
-                  )}
-                </div>
-                {m.role !== 'admin' && (
-                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                    {m.membership_active &&
-                    !(
-                      m.paid_until != null &&
-                      daysFromTodayISO(m.paid_until) < 0 &&
-                      (m.courtesy_used ?? 0) >= courtesyClasses
-                    ) ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-accent-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-300 ring-1 ring-accent-500/25">
-                        <BadgeCheck className="h-3 w-3" /> Activo
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-300 ring-1 ring-brand-500/20">
-                        Inactivo
-                      </span>
-                    )}
-                    <span className="text-[11px] text-zinc-400">
-                      {m.plan_name ?? 'Cuota estándar'}
-                    </span>
-                    {(() => {
-                      const pastDue = m.paid_until != null && daysFromTodayISO(m.paid_until) < 0;
-                      const used = m.courtesy_used ?? 0;
-                      const inCourtesy =
-                        m.membership_active && pastDue && courtesyClasses > 0 && used < courtesyClasses;
-                      if (inCourtesy) {
-                        return (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300 ring-1 ring-amber-500/30">
-                            <Gift className="h-3 w-3" /> Cortesía · {used}/{courtesyClasses}
-                          </span>
-                        );
-                      }
-                      const due = dueInfo(m.paid_until);
-                      if (!due) return null;
-                      const cls =
-                        due.kind === 'expired'
-                          ? 'text-brand-300'
-                          : due.kind === 'soon'
-                            ? 'text-amber-300'
-                            : 'text-zinc-500';
-                      const label =
-                        due.kind === 'expired'
-                          ? 'Vencido'
-                          : due.kind === 'soon'
-                            ? due.days === 0
-                              ? 'Vence hoy'
-                              : 'Vence mañana'
-                            : `Vence ${formatDateES(m.paid_until!)}`;
-                      return (
-                        <span className={`inline-flex items-center gap-1 text-[11px] ${cls}`}>
-                          <CalendarClock className="h-3 w-3" /> {label}
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-sm font-semibold text-white">
+                          {memberFullName(m)}
                         </span>
-                        );
-                      })()}
-                      {!(m.paid_until != null && daysFromTodayISO(m.paid_until) < 0) &&
-                        (m.class_debt ?? 0) > 0 && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 ring-1 ring-white/10">
-                            −{m.class_debt} clases este mes
-                          </span>
+                        {m.role === 'admin' && (
+                          <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-brand-300" />
                         )}
-                      {/* Consumo de clases: semana en curso y mes natural */}
-                      {m.week_limit != null && (
-                        <button
-                          type="button"
-                          onClick={() => setUsageFor(m)}
-                          title="Ver clases y devolver créditos"
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 transition hover:brightness-125 ${
-                            (m.week_used ?? 0) >= m.week_limit
-                              ? 'bg-brand-500/15 text-brand-300 ring-brand-500/30'
-                              : 'bg-white/5 text-zinc-300 ring-white/10'
-                          }`}
-                        >
-                          <Ticket className="h-3 w-3" />
-                          {m.week_used ?? 0}/{m.week_limit} sem
-                          <span className="text-zinc-500">
-                            · {m.month_used ?? 0}
-                            {m.month_limit != null ? `/${m.month_limit}` : ''} mes
-                          </span>
-                        </button>
+                        {!m.activated && (
+                          <Clock3 className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                        )}
+                      </span>
+                      {m.role !== 'admin' && (
+                        <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                          {/* Estado */}
+                          {(() => {
+                            const f = memberFlags(m, courtesyClasses);
+                            if (!m.activated)
+                              return <span className="text-zinc-500">Sin activar</span>;
+                            if (!f.effectiveActive)
+                              return <span className="font-semibold text-brand-300">Inactivo</span>;
+                            if (f.inCourtesy)
+                              return (
+                                <span className="inline-flex items-center gap-1 font-semibold text-amber-300">
+                                  <Gift className="h-3 w-3" /> Cortesía {m.courtesy_used ?? 0}/
+                                  {courtesyClasses}
+                                </span>
+                              );
+                            return <span className="font-semibold text-accent-300">Activo</span>;
+                          })()}
+                          {/* Plan, solo si no es la cuota estándar */}
+                          {m.plan_name && <span className="text-zinc-500">{m.plan_name}</span>}
+                          {/* Vencimiento */}
+                          {(() => {
+                            const due = dueInfo(m.paid_until);
+                            if (!due) return null;
+                            if (due.kind === 'expired')
+                              return <span className="text-brand-300">Vencido</span>;
+                            if (due.kind === 'soon')
+                              return (
+                                <span className="text-amber-300">
+                                  {due.days === 0 ? 'Vence hoy' : 'Vence mañana'}
+                                </span>
+                              );
+                            return (
+                              <span className="text-zinc-500">
+                                Vence {formatDateES(m.paid_until!).replace(/^[^,]+,\s*/, '')}
+                              </span>
+                            );
+                          })()}
+                          {/* Consumo de la semana */}
+                          {m.week_limit != null && (
+                            <span
+                              className={`inline-flex items-center gap-1 tabular-nums ${
+                                (m.week_used ?? 0) >= m.week_limit
+                                  ? 'font-semibold text-brand-300'
+                                  : 'text-zinc-500'
+                              }`}
+                            >
+                              <Ticket className="h-3 w-3" />
+                              {m.week_used ?? 0}/{m.week_limit}
+                            </span>
+                          )}
+                        </span>
                       )}
-                    </div>
-                  )}
-                  </div>
-                  {actionItems.length > 0 && <AdaptiveActions items={actionItems} />}
+                    </span>
+                  </button>
+                  {actionItems.length > 0 && <AdaptiveActions items={actionItems} reserve={140} />}
                 </div>
               </motion.div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       <NewMemberModal open={open} onClose={() => setOpen(false)} onDone={load} />
       <ClassUsageModal member={usageFor} onClose={() => setUsageFor(null)} onChanged={load} />
       <EditMemberModal member={editing} onClose={() => setEditing(null)} onSaved={load} />
+      <MemberSheet
+        member={sheetFor}
+        courtesyClasses={courtesyClasses}
+        onClose={() => setSheetFor(null)}
+        onEditar={desdeFicha(setEditing)}
+        onPagar={desdeFicha(setPaying)}
+        onClases={desdeFicha(setUsageFor)}
+        onMembresia={desdeFicha(setManaging)}
+      />
       <MembershipModal
         member={managing}
         plans={plans}
