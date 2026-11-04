@@ -23,7 +23,6 @@ import {
 } from '../../lib/api';
 import { capFirst, invoiceTotals, lineAmounts, parseAmount, round2, VAT_RATE } from '../../lib/invoiceMath';
 import { todayISO } from '../../lib/dates';
-import { useAuth } from '../../lib/auth';
 import { memberFullName, type IssuedInvoice, type Member, type MemberBilling } from '../../lib/types';
 
 const EUR = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
@@ -148,7 +147,6 @@ interface DatosBox {
 const SIN_DATOS: MemberBilling = { nif: null, address1: null, address2: null };
 
 function BoxThaiForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e: EmisionPdf) => void }) {
-  const { logoUrl } = useAuth();
   const [datos, setDatos] = useState<DatosBox | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -285,7 +283,7 @@ function BoxThaiForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e:
     }
 
     // 3. PDF: se descarga en el dispositivo y se sube a «Facturas»
-    const emision = await emitirPdf(inv, logoUrl);
+    const emision = await emitirPdf(inv);
     setSaving(false);
     onIssued(emision);
   }
@@ -654,8 +652,7 @@ function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e
       setSaving(false);
       return;
     }
-    // Las asesorías no llevan el logo del box
-    const emision = await emitirPdf(inv, null);
+    const emision = await emitirPdf(inv);
     setSaving(false);
     onIssued(emision);
   }

@@ -1,7 +1,7 @@
 /**
  * PDF de las facturas emitidas, con la maquetación de la plantilla Word del box
- * (factura completa) y los colores de la web. Se genera en el navegador con
- * pdf-lib, que se carga solo cuando hace falta.
+ * (factura completa) y los colores de la web, sin logo. Se genera en el
+ * navegador con pdf-lib, que se carga solo cuando hace falta.
  *
  * Sin VERI*FACTU: ni QR ni la frase «VERI*FACTU» (el box aún no está obligado).
  * Contenido según el art. 6 del Reglamento de facturación (RD 1619/2012).
@@ -23,8 +23,8 @@ const HEX = {
 };
 
 const BORDE = { izq: 45.4, der: 550.0 };
-const LOGO = { x: 45.5, lado: 80 };
-const EMISOR_X = 147.4;
+// Las facturas no llevan logo: los datos del emisor van alineados a la izquierda
+const EMISOR_X = 45.5;
 
 // Tabla de detalle (columnas de la plantilla)
 const T = {
@@ -81,7 +81,7 @@ export function invoiceFileName(inv: IssuedInvoice): string {
   return `${inv.code}_${slug}.pdf`;
 }
 
-export async function buildInvoicePdf(inv: IssuedInvoice, logoPng: Uint8Array | null): Promise<Uint8Array> {
+export async function buildInvoicePdf(inv: IssuedInvoice): Promise<Uint8Array> {
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
   const C = {
     marca: hexToRgb(rgb, HEX.marca),
@@ -141,33 +141,14 @@ export async function buildInvoicePdf(inv: IssuedInvoice, logoPng: Uint8Array | 
     return lineas;
   };
 
-  // ===== Emisor (con el logo a la izquierda) =================================
+  // ===== Emisor ==============================================================
   const emisor = [
     inv.issuer.nif ? `NIF ${inv.issuer.nif}` : null,
     inv.issuer.address1,
     inv.issuer.address2,
   ].filter((l): l is string => Boolean(l));
-  let logoDibujado = false;
-  // Las asesorías no llevan el logo del box
-  if (logoPng && inv.kind !== 'asesoria') {
-    try {
-      const img = await pdf.embedPng(logoPng);
-      const s = Math.min(LOGO.lado / img.width, LOGO.lado / img.height);
-      const w = img.width * s;
-      const h = img.height * s;
-      // Centrado en vertical con el bloque de texto del emisor
-      const arriba = 75.8 - 8;
-      const abajo = 89.8 + Math.max(0, emisor.length - 1) * 11.5 + 2;
-      const top = Math.max(36, (arriba + abajo) / 2 - h / 2);
-      page.drawImage(img, { x: LOGO.x, y: Y(top + h), width: w, height: h });
-      logoDibujado = true;
-    } catch {
-      /* logo ilegible: la factura sale igual, sin él */
-    }
-  }
-  const xEmisor = logoDibujado ? EMISOR_X : LOGO.x;
-  texto(inv.issuer.name, xEmisor, 75.8, 11, bold, C.tinta);
-  emisor.forEach((l, i) => texto(l, xEmisor, 89.8 + i * 11.5, 8.5, reg, C.texto));
+  texto(inv.issuer.name, EMISOR_X, 75.8, 11, bold, C.tinta);
+  emisor.forEach((l, i) => texto(l, EMISOR_X, 89.8 + i * 11.5, 8.5, reg, C.texto));
   filete(154.2, 0.8, 45.7);
 
   // ===== Título, número y fecha ==============================================
@@ -249,33 +230,6 @@ export async function buildInvoicePdf(inv: IssuedInvoice, logoPng: Uint8Array | 
   filete(787.5, 0.6, 45.8);
 
   return pdf.save();
-}
-
-/**
- * Logo del box en PNG (máx. 600 px) para incrustarlo en la factura: el de
- * Ajustes si lo hay, si no el de la app. null si no se puede cargar.
- */
-export async function loadInvoiceLogo(url: string | null): Promise<Uint8Array | null> {
-  try {
-    const res = await fetch(url ?? '/logo.png', { mode: 'cors' });
-    if (!res.ok) throw new Error('logo');
-    const bmp = await createImageBitmap(await res.blob());
-    const s = Math.min(1, 600 / Math.max(bmp.width, bmp.height));
-    const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(bmp.width * s));
-    c.height = Math.max(1, Math.round(bmp.height * s));
-    const ctx = c.getContext('2d');
-    if (!ctx) throw new Error('logo');
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(bmp, 0, 0, c.width, c.height);
-    const blob = await new Promise<Blob>((ok, ko) =>
-      c.toBlob((b) => (b ? ok(b) : ko(new Error('logo'))), 'image/png'),
-    );
-    return new Uint8Array(await blob.arrayBuffer());
-  } catch {
-    return url ? loadInvoiceLogo(null) : null;
-  }
 }
 
 /** Descarga un PDF en el dispositivo */

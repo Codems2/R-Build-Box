@@ -12,7 +12,6 @@ import {
 import { fetchBillingSettings, fetchMembersBilling, issueInvoiceFromPayments } from '../../lib/api';
 import { invoiceTotals, lineAmounts, VAT_RATE } from '../../lib/invoiceMath';
 import { formatDateES, todayISO } from '../../lib/dates';
-import { useAuth } from '../../lib/auth';
 import { memberFullName, type Member, type MemberBilling, type MonthPaymentStatus } from '../../lib/types';
 
 const EUR = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
@@ -35,7 +34,6 @@ export default function PaymentsInvoiceModal({
   onClose: () => void;
   onIssued: () => void;
 }) {
-  const { logoUrl } = useAuth();
   const [emisorOk, setEmisorOk] = useState<boolean | null>(null);
   const [fiscal, setFiscal] = useState<MemberBilling | null>(null);
   const [saving, setSaving] = useState(false);
@@ -77,7 +75,7 @@ export default function PaymentsInvoiceModal({
     setError(null);
     try {
       const inv = await issueInvoiceFromPayments(member.id);
-      setResultado(await emitirPdf(inv, logoUrl));
+      setResultado(await emitirPdf(inv));
       onIssued();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo emitir la factura.');

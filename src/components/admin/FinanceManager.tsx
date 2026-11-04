@@ -38,8 +38,7 @@ import {
   updateFinanceEntry,
   uploadInvoice,
 } from '../../lib/api';
-import { buildInvoicePdf, downloadPdf, invoiceFileName, loadInvoiceLogo } from '../../lib/invoicePdf';
-import { useAuth } from '../../lib/auth';
+import { buildInvoicePdf, downloadPdf, invoiceFileName } from '../../lib/invoicePdf';
 import { formatDateES, todayISO } from '../../lib/dates';
 import { isMobileDevice } from '../../lib/pwa';
 import type { FinanceEntry, FinanceKind, IssuedInvoice, MemberIncomeRow } from '../../lib/types';
@@ -532,7 +531,6 @@ function InvoicesDownloadModal({
   defaultYm: string;
   onClose: () => void;
 }) {
-  const { logoUrl } = useAuth();
   const [ym, setYm] = useState(defaultYm);
   const [invoices, setInvoices] = useState<FinanceEntry[] | null>(null);
   const [issued, setIssued] = useState<IssuedInvoice[] | null>(null);
@@ -567,7 +565,7 @@ function InvoicesDownloadModal({
   }, [open, ym]);
 
   /** PDF de una factura emitida: el guardado o, si no se llegó a subir, uno nuevo */
-  async function issuedBytes(inv: IssuedInvoice, logo: Promise<Uint8Array | null>): Promise<Uint8Array> {
+  async function issuedBytes(inv: IssuedInvoice): Promise<Uint8Array> {
     if (inv.pdf_path) {
       try {
         return await downloadInvoiceBytes(inv.pdf_path);
@@ -575,7 +573,7 @@ function InvoicesDownloadModal({
         /* se regenera a partir de los datos guardados */
       }
     }
-    const bytes = await buildInvoicePdf(inv, await logo);
+    const bytes = await buildInvoicePdf(inv);
     if (!inv.pdf_path) await saveIssuedInvoicePdf(inv, bytes).catch(() => undefined);
     return bytes;
   }
@@ -584,7 +582,7 @@ function InvoicesDownloadModal({
     setBusyId(inv.id);
     setError(null);
     try {
-      downloadPdf(await issuedBytes(inv, loadInvoiceLogo(logoUrl)), invoiceFileName(inv));
+      downloadPdf(await issuedBytes(inv), invoiceFileName(inv));
     } catch (err) {
       console.error(err);
       setError('No se pudo descargar la factura.');
@@ -602,12 +600,9 @@ function InvoicesDownloadModal({
     try {
       const files: Record<string, Uint8Array> = {};
       // Emitidas, en su carpeta y con su número
-      if (issued.length > 0) {
-        const logo = loadInvoiceLogo(logoUrl);
-        for (const inv of [...issued].sort((a, b) => a.number - b.number)) {
-          const carpeta = inv.kind === 'asesoria' ? 'asesorias' : 'emitidas';
-          files[`${carpeta}/${invoiceFileName(inv)}`] = await issuedBytes(inv, logo);
-        }
+      for (const inv of [...issued].sort((a, b) => a.number - b.number)) {
+        const carpeta = inv.kind === 'asesoria' ? 'asesorias' : 'emitidas';
+        files[`${carpeta}/${invoiceFileName(inv)}`] = await issuedBytes(inv);
       }
       // Gastos: como hasta ahora, día_concepto
       for (const e of invoices) {

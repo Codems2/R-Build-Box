@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, Download, IdCard, Mail, MapPin, Phone, User } from 'lucide-react';
 import { saveIssuedInvoicePdf } from '../../lib/api';
-import { buildInvoicePdf, downloadPdf, invoiceFileName, loadInvoiceLogo } from '../../lib/invoicePdf';
+import { buildInvoicePdf, downloadPdf, invoiceFileName } from '../../lib/invoicePdf';
 import { formatDateES } from '../../lib/dates';
 import {
   memberFullName,
@@ -23,10 +23,10 @@ export interface EmisionPdf {
  * Tras emitir: genera el PDF, lo descarga en el dispositivo y lo sube a
  * «Facturas». Si algo falla, la factura sigue emitida y se avisa.
  */
-export async function emitirPdf(inv: IssuedInvoice, logoUrl: string | null): Promise<EmisionPdf> {
+export async function emitirPdf(inv: IssuedInvoice): Promise<EmisionPdf> {
   let bytes: Uint8Array;
   try {
-    bytes = await buildInvoicePdf(inv, await loadInvoiceLogo(logoUrl));
+    bytes = await buildInvoicePdf(inv);
   } catch (err) {
     console.error(err);
     return {
