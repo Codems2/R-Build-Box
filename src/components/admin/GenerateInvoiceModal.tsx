@@ -1,21 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import {
-  AlertTriangle,
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  Download,
-  Loader2,
-  Mail,
-  Minus,
-  Phone,
-  Plus,
-  Search,
-  User,
-  X,
-} from 'lucide-react';
+import { Check, ChevronDown, Loader2, Minus, Plus, Search, X } from 'lucide-react';
 import Modal from '../Modal';
 import { matchesQuery } from './MemberFilters';
+import { ClientPreview, emitirPdf, InvoiceIssuedView, IssuerMissing, type EmisionPdf } from './InvoiceShared';
 import {
   fetchAppSettings,
   fetchBillingSettings,
@@ -23,11 +10,9 @@ import {
   fetchMembers,
   fetchPlans,
   issueInvoice,
-  saveIssuedInvoicePdf,
 } from '../../lib/api';
-import { buildInvoicePdf, downloadPdf, invoiceFileName, loadInvoiceLogo } from '../../lib/invoicePdf';
 import { capFirst, invoiceTotals, lineAmounts, VAT_RATE } from '../../lib/invoiceMath';
-import { formatDateES, todayISO } from '../../lib/dates';
+import { todayISO } from '../../lib/dates';
 import { useAuth } from '../../lib/auth';
 import { memberFullName, type IssuedInvoice, type Member } from '../../lib/types';
 
@@ -79,8 +64,7 @@ export default function GenerateInvoiceModal({
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
-  const [resultado, setResultado] = useState<{ inv: IssuedInvoice; bytes: Uint8Array | null } | null>(null);
+  const [resultado, setResultado] = useState<EmisionPdf | null>(null);
 
   // Cada vez que se abre: formulario limpio y datos frescos
   useEffect(() => {
@@ -94,7 +78,6 @@ export default function GenerateInvoiceModal({
     setProductsOpen(false);
     setFecha(todayISO());
     setError(null);
-    setAviso(null);
     setResultado(null);
     let active = true;
     Promise.all([fetchMembers(), fetchPlans(), fetchAppSettings(), fetchBillingSettings(), fetchLastInvoiceDate()])
@@ -178,7 +161,6 @@ export default function GenerateInvoiceModal({
     if (!listo || !cliente || saving) return;
     setSaving(true);
     setError(null);
-    setAviso(null);
 
     // 1. La base de datos asigna el número y guarda la factura
     let inv: IssuedInvoice;
@@ -195,67 +177,16 @@ export default function GenerateInvoiceModal({
     }
 
     // 2. PDF: se descarga en el dispositivo y se sube a «Facturas»
-    try {
-      const bytes = await buildInvoicePdf(inv, await loadInvoiceLogo(logoUrl));
-      setResultado({ inv, bytes });
-      downloadPdf(bytes, invoiceFileName(inv));
-      try {
-        await saveIssuedInvoicePdf(inv, bytes);
-      } catch {
-        setAviso(
-          'La factura está emitida y descargada, pero no se pudo subir el PDF a la nube. Podrás descargarla igualmente desde «Facturas».',
-        );
-      }
-    } catch (err) {
-      console.error(err);
-      setResultado({ inv, bytes: null });
-      setAviso('La factura está emitida, pero no se pudo generar el PDF. Descárgala desde «Facturas».');
-    } finally {
-      setSaving(false);
-      onIssued?.();
-    }
+    setResultado(await emitirPdf(inv, logoUrl));
+    setSaving(false);
+    onIssued?.();
   }
 
   // ===== Factura emitida ======================================================
   if (resultado) {
-    const { inv, bytes } = resultado;
     return (
       <Modal open={open} onClose={onClose} title="Factura emitida">
-        <div className="space-y-4">
-          <div className="flex flex-col items-center gap-2 py-1 text-center">
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-500/15 text-accent-300 ring-1 ring-accent-500/25">
-              <CheckCircle2 className="h-6 w-6" />
-            </span>
-            <p className="font-display text-base font-bold text-white">Factura {inv.code}</p>
-            <p className="text-xs text-zinc-400">
-              {inv.client.name} · {EUR.format(inv.total)} · {formatDateES(inv.issue_date)}
-            </p>
-            {bytes && !aviso && (
-              <p className="text-xs text-zinc-500">
-                Se ha descargado en este dispositivo y queda guardada en «Facturas».
-              </p>
-            )}
-          </div>
-          {aviso && (
-            <p className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-200">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> {aviso}
-            </p>
-          )}
-          <div className="flex gap-2 pt-1">
-            {bytes && (
-              <button
-                type="button"
-                onClick={() => downloadPdf(bytes, invoiceFileName(inv))}
-                className="btn-ghost flex-1 whitespace-nowrap"
-              >
-                <Download className="h-4 w-4 shrink-0" /> Descargar
-              </button>
-            )}
-            <button type="button" onClick={onClose} className="btn-primary flex-1">
-              Cerrar
-            </button>
-          </div>
-        </div>
+        <InvoiceIssuedView emision={resultado} onClose={onClose} />
       </Modal>
     );
   }
@@ -273,13 +204,7 @@ export default function GenerateInvoiceModal({
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
-          {!datos.emisorOk && (
-            <p className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-200">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              Faltan los datos fiscales del box (nombre y NIF). Añádelos en Configuración → Datos de
-              facturación.
-            </p>
-          )}
+          {!datos.emisorOk && <IssuerMissing />}
 
           {/* ===== Cliente ===== */}
           <div>
@@ -353,26 +278,8 @@ export default function GenerateInvoiceModal({
 
             {/* Lo que saldrá del cliente: solo los datos que tenga rellenos */}
             {cliente && !clientOpen && (
-              <div className="mt-2 space-y-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                  Saldrá en la factura
-                </p>
-                <p className="flex min-w-0 items-center gap-2 text-xs text-zinc-200">
-                  <User className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-                  <span className="truncate">{memberFullName(cliente)}</span>
-                </p>
-                {cliente.phone?.trim() && (
-                  <p className="flex min-w-0 items-center gap-2 text-xs text-zinc-200">
-                    <Phone className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-                    <span className="truncate">{cliente.phone.trim()}</span>
-                  </p>
-                )}
-                {cliente.email?.trim() && (
-                  <p className="flex min-w-0 items-center gap-2 text-xs text-zinc-200">
-                    <Mail className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-                    <span className="truncate">{cliente.email.trim()}</span>
-                  </p>
-                )}
+              <div className="mt-2">
+                <ClientPreview member={cliente} />
               </div>
             )}
           </div>

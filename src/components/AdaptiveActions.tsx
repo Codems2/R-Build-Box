@@ -13,6 +13,8 @@ export interface ActionItem {
   loading?: boolean;
   /** Clase extra para el botón en línea (color de acento, etc.) */
   iconClassName?: string;
+  /** Nota breve (p. ej. por qué está desactivado): bajo la opción del menú y en el tooltip */
+  hint?: string;
 }
 
 /** Separación entre el botón y el menú, y margen mínimo con el borde */
@@ -227,11 +229,18 @@ export default function AdaptiveActions({
                         }`}
                       >
                         {it.loading ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                         ) : (
-                          <it.icon className="h-4 w-4" />
+                          <it.icon className="h-4 w-4 shrink-0" />
                         )}
-                        {it.label}
+                        {it.hint ? (
+                          <span className="min-w-0">
+                            <span className="block">{it.label}</span>
+                            <span className="block text-[11px] leading-snug text-zinc-500">{it.hint}</span>
+                          </span>
+                        ) : (
+                          it.label
+                        )}
                       </button>
                     ))}
                   </motion.div>
@@ -248,9 +257,9 @@ export default function AdaptiveActions({
               key={it.key}
               onClick={it.onClick}
               disabled={it.disabled}
-              className={`btn-icon ${it.iconClassName ?? ''}`}
-              aria-label={it.label}
-              title={it.label}
+              className={`btn-icon disabled:cursor-not-allowed disabled:opacity-40 ${it.iconClassName ?? ''}`}
+              aria-label={it.hint ? `${it.label} (${it.hint})` : it.label}
+              title={it.hint ? `${it.label} · ${it.hint}` : it.label}
             >
               {it.loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

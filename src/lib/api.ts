@@ -15,6 +15,7 @@ import type {
   InvoiceLine,
   IssuedInvoice,
   Member,
+  MonthPaymentStatus,
   MemberIncomeRow,
   MemberInput,
   MyBookingRow,
@@ -707,7 +708,15 @@ export async function registerPayment(
     const name = m ? memberFullNameLS(m) : 'Socio';
     writeLS(LS_FINANCE, [
       ...readLS<FinanceEntry[]>(LS_FINANCE, []),
-      { id: newId(), kind: 'income', concept: `Cuota · ${name}`, amount: value, entry_date: ref, invoice_path: null },
+      {
+        id: newId(),
+        kind: 'income',
+        concept: `Cuota · ${name}`,
+        amount: value,
+        entry_date: ref,
+        invoice_path: null,
+        member_id: memberId,
+      },
     ]);
     income = true;
   }
@@ -1242,6 +1251,7 @@ const INVOICE_ERROR_MESSAGES: Record<string, string> = {
   TOO_MANY_ITEMS: 'Una factura admite como máximo 10 productos.',
   BAD_QUANTITY: 'Las cantidades deben estar entre 1 y 99.',
   PLAN_NOT_FOUND: 'Uno de los productos ya no existe. Recarga la página.',
+  NO_PAYMENTS: 'Este socio no tiene cuotas de este mes pendientes de facturar.',
   ZERO_PRICE: 'Uno de los productos no tiene precio.',
   NOT_ADMIN: 'Solo un administrador puede emitir facturas.',
 };
@@ -1339,7 +1349,18 @@ async function issueInvoiceDemo(
       total,
     });
   }
+  return createIssuedDemo(member, issueDate, lines, billing);
+}
 
+/** Demo: parte común de emitir (numeración correlativa y foto de los datos) */
+function createIssuedDemo(
+  member: Member,
+  issueDate: string,
+  lines: InvoiceLine[],
+  billing: BillingSettings,
+): IssuedInvoice {
+  if (!billing.issuer_name || !billing.issuer_nif) throw invoiceError('ISSUER_MISSING');
+  const memberId = member.id;
   const year = issueDate.slice(0, 4);
   const series = `F${year}`;
   const all = readLS<IssuedInvoice[]>(LS_ISSUED, []);
@@ -1376,6 +1397,121 @@ async function issueInvoiceDemo(
     created_at: new Date().toISOString(),
   };
   writeLS(LS_ISSUED, [...all, inv]);
+  return inv;
+}
+
+// ----- Facturar las cuotas del mes desde la lista de socios -----------------
+
+/** Nombre sin tildes, en minúsculas y con espacios simples (como norm_person_name) */
+const normName = (s: string | null | undefined) =>
+  (s ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+/** Demo: socio de una cuota, por su enlace o por el nombre del concepto */
+function demoMemberOfEntry(e: FinanceEntry, members: Member[]): string | null {
+  if (e.member_id) return e.member_id;
+  const c = normName(e.concept);
+  if (!c.startsWith('cuota') || !e.concept.includes('·')) return null;
+  const n = normName(e.concept.slice(e.concept.lastIndexOf('·') + 1));
+  const hits = members.filter((m) => normName(memberFullName(m)) === n || normName(m.email) === n);
+  return hits.length === 1 ? hits[0].id : null;
+}
+
+/** Demo: cuotas del mes en curso (hasta hoy) */
+function demoMonthIncome(): FinanceEntry[] {
+  const today = todayISO();
+  const first = `${today.slice(0, 7)}-01`;
+  return readLS<FinanceEntry[]>(LS_FINANCE, []).filter(
+    (e) => e.kind === 'income' && e.entry_date >= first && e.entry_date <= today,
+  );
+}
+
+/** Cuotas del mes de cada socio: pendientes de facturar y facturas ya hechas */
+export async function fetchMonthPaymentsStatus(): Promise<Record<string, MonthPaymentStatus>> {
+  const out: Record<string, MonthPaymentStatus> = {};
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.rpc('month_payments_status');
+    if (error) throw error;
+    for (const r of (data ?? []) as MonthPaymentStatus[]) {
+      out[r.member_id] = {
+        member_id: r.member_id,
+        pending: (r.pending ?? []).map((p) => ({ ...p, amount: Number(p.amount) })),
+        invoiced: r.invoiced ?? [],
+      };
+    }
+    return out;
+  }
+  const members = readLS<Member[]>(LS_MEMBERS, []);
+  const issued = readLS<IssuedInvoice[]>(LS_ISSUED, []);
+  for (const e of demoMonthIncome().sort((a, b) => a.entry_date.localeCompare(b.entry_date))) {
+    const mid = demoMemberOfEntry(e, members);
+    if (!mid) continue;
+    const s = (out[mid] ??= { member_id: mid, pending: [], invoiced: [] });
+    if (e.issued_invoice_id) {
+      const code = issued.find((i) => i.id === e.issued_invoice_id)?.code;
+      if (code && !s.invoiced.includes(code)) s.invoiced.push(code);
+    } else {
+      s.pending.push({ id: e.id, entry_date: e.entry_date, amount: e.amount, concept: e.concept });
+    }
+  }
+  return out;
+}
+
+/** Factura, con fecha de hoy, las cuotas del mes en curso aún sin facturar del socio */
+export async function issueInvoiceFromPayments(memberId: string): Promise<IssuedInvoice> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.rpc('issue_invoice_from_payments', { p_member_id: memberId });
+    if (error) throw invoiceError(error.message);
+    return normalizeInvoice(data);
+  }
+  // Demo: misma lógica que issue_invoice_from_payments
+  const members = readLS<Member[]>(LS_MEMBERS, []);
+  const member = members.find((m) => m.id === memberId);
+  if (!member) throw invoiceError('MEMBER_NOT_FOUND');
+  const pagos = demoMonthIncome()
+    .filter((e) => !e.issued_invoice_id && demoMemberOfEntry(e, members) === memberId)
+    .sort((a, b) => a.entry_date.localeCompare(b.entry_date));
+  if (pagos.length === 0) throw invoiceError('NO_PAYMENTS');
+  if (pagos.length > 10) throw invoiceError('TOO_MANY_ITEMS');
+  const plan = readLS<Plan[]>(LS_PLANS, []).find((p) => p.id === member.plan_id) ?? null;
+  const fee = (await fetchAppSettings()).default_monthly_fee;
+  const lines: InvoiceLine[] = pagos.map((e) => {
+    const pago = `Pago del ${e.entry_date.split('-').reverse().join('/')}`;
+    let concept = 'Cuota mensual';
+    let detail = pago;
+    if (plan && plan.monthly_price === e.amount) {
+      concept = capFirst(plan.name.trim());
+      detail = [plan.description?.trim() ? capFirst(plan.description.trim()) : null, pago]
+        .filter(Boolean)
+        .join(' · ');
+    } else if (!plan && e.amount === fee) {
+      concept = 'Cuota estándar';
+      detail = `Cuota mensual · ${pago}`;
+    }
+    const { total, base } = lineAmounts(e.amount, 1);
+    return {
+      concept,
+      detail,
+      quantity: 1,
+      unit_price: Math.round((e.amount / (1 + VAT_RATE / 100)) * 10000) / 10000,
+      unit_price_with_vat: e.amount,
+      vat_rate: VAT_RATE,
+      base,
+      total,
+    };
+  });
+  const inv = createIssuedDemo(member, todayISO(), lines, await fetchBillingSettings());
+  const ids = new Set(pagos.map((p) => p.id));
+  writeLS(
+    LS_FINANCE,
+    readLS<FinanceEntry[]>(LS_FINANCE, []).map((e) =>
+      ids.has(e.id) ? { ...e, issued_invoice_id: inv.id, member_id: memberId } : e,
+    ),
+  );
   return inv;
 }
 

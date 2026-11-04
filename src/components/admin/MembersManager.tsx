@@ -4,6 +4,7 @@ import {
   BadgeCheck,
   Clock3,
   Euro,
+  FilePlus,
   Gift,
   Loader2,
   Mail,
@@ -20,6 +21,7 @@ import AdaptiveActions, { type ActionItem } from '../AdaptiveActions';
 import ClassUsageModal from './ClassUsageModal';
 import EditMemberModal from './EditMemberModal';
 import MemberSheet from './MemberSheet';
+import PaymentsInvoiceModal from './PaymentsInvoiceModal';
 import MemberFilters, {
   matchesEstado,
   matchesQuery,
@@ -32,6 +34,7 @@ import {
   deleteMember,
   fetchAppSettings,
   fetchMembers,
+  fetchMonthPaymentsStatus,
   fetchPlans,
   inviteMember,
   registerPayment,
@@ -40,7 +43,13 @@ import {
   updateMemberProfile,
 } from '../../lib/api';
 import { daysFromTodayISO, formatDateES, todayISO } from '../../lib/dates';
-import { memberFullName, type Member, type MemberInput, type Plan } from '../../lib/types';
+import {
+  memberFullName,
+  type Member,
+  type MemberInput,
+  type MonthPaymentStatus,
+  type Plan,
+} from '../../lib/types';
 
 /** Estado de vencimiento de la mensualidad a partir de paid_until */
 function dueInfo(paidUntil: string | null) {
@@ -65,7 +74,10 @@ export default function MembersManager() {
   const [usageFor, setUsageFor] = useState<Member | null>(null);
   const [editing, setEditing] = useState<Member | null>(null);
   const [sheetFor, setSheetFor] = useState<Member | null>(null);
+  const [invoicing, setInvoicing] = useState<Member | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Cuotas del mes de cada socio (para el botón «Generar factura»)
+  const [pagosMes, setPagosMes] = useState<Record<string, MonthPaymentStatus>>({});
 
   // Filtros de la lista
   const [query, setQuery] = useState('');
@@ -75,11 +87,21 @@ export default function MembersManager() {
   const load = useCallback(async () => {
     try {
       setError(null);
-      const [m, p, s] = await Promise.all([fetchMembers(), fetchPlans(), fetchAppSettings()]);
+      const [m, p, s, pagos] = await Promise.all([
+        fetchMembers(),
+        fetchPlans(),
+        fetchAppSettings(),
+        // Si esto falla, la lista sale igual (solo sin poder facturar)
+        fetchMonthPaymentsStatus().catch((e) => {
+          console.error(e);
+          return {} as Record<string, MonthPaymentStatus>;
+        }),
+      ]);
       setMembers(m);
       setPlans(p);
       setDefaultFee(s.default_monthly_fee);
       setCourtesyClasses(s.courtesy_classes);
+      setPagosMes(pagos);
     } catch (e) {
       console.error(e);
       setError('No se pudieron cargar los socios.');
@@ -202,6 +224,22 @@ export default function MembersManager() {
           ) : (
             <div className="space-y-2">
               {visibles.map((m) => {
+            // Factura de las cuotas del mes: solo si tiene alguna sin facturar
+            const pagos = pagosMes[m.id];
+            const pendientes = pagos?.pending.length ?? 0;
+            const facturaItem: ActionItem = {
+              key: 'invoice',
+              label: 'Generar factura',
+              icon: FilePlus,
+              onClick: () => setInvoicing(m),
+              disabled: pendientes === 0,
+              hint:
+                pendientes > 0
+                  ? undefined
+                  : pagos?.invoiced.length
+                    ? `Ya facturada: ${pagos.invoiced.join(', ')}`
+                    : 'Sin cuotas este mes',
+            };
             const actionItems: ActionItem[] =
               m.role === 'admin'
                 ? []
@@ -219,6 +257,7 @@ export default function MembersManager() {
                       onClick: () => setPaying(m),
                       iconClassName: '!text-accent-300 hover:!text-accent-200',
                     },
+                    facturaItem,
                     {
                       key: 'usage',
                       label: 'Clases y créditos',
@@ -365,6 +404,12 @@ export default function MembersManager() {
         plans={plans}
         onClose={() => setManaging(null)}
         onSaved={load}
+      />
+      <PaymentsInvoiceModal
+        member={invoicing}
+        status={invoicing ? (pagosMes[invoicing.id] ?? null) : null}
+        onClose={() => setInvoicing(null)}
+        onIssued={() => void load()}
       />
       <PaymentModal
         member={paying}

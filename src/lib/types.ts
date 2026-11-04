@@ -139,6 +139,10 @@ export interface FinanceEntry {
   entry_date: string;
   /** Factura adjunta (ruta en Storage), solo gastos */
   invoice_path: string | null;
+  /** Socio al que corresponde la cuota (se enlaza solo en la base de datos) */
+  member_id?: string | null;
+  /** Factura emitida que ya incluye esta cuota */
+  issued_invoice_id?: string | null;
   created_at?: string;
 }
 
@@ -199,6 +203,22 @@ export interface IssuedInvoice {
   /** Ruta del PDF en el bucket `invoices` (null si aún no se ha guardado) */
   pdf_path: string | null;
   created_at?: string;
+}
+
+/** Cuota cobrada este mes, aún sin facturar */
+export interface PendingPayment {
+  id: string;
+  entry_date: string;
+  amount: number;
+  concept: string;
+}
+
+/** Cuotas del mes en curso de un socio: pendientes de facturar y facturas ya hechas */
+export interface MonthPaymentStatus {
+  member_id: string;
+  pending: PendingPayment[];
+  /** Números de las facturas que ya incluyen cuotas de este mes */
+  invoiced: string[];
 }
 
 /** Producto pedido al emitir: un plan (o la cuota estándar si plan_id es null) */
