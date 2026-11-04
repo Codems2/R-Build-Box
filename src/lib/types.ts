@@ -184,13 +184,17 @@ export interface InvoiceLine {
   total: number;
 }
 
-/** Factura emitida a un socio (con la foto de los datos del momento) */
+/** box = factura del box (serie F, precios con IVA); asesoria = a mano (serie A, sin IVA) */
+export type InvoiceKind = 'box' | 'asesoria';
+
+/** Factura emitida (con la foto de los datos del momento) */
 export interface IssuedInvoice {
   id: string;
   series: string;
   number: number;
-  /** Número completo, p. ej. F2026-00001 */
+  /** Número completo, p. ej. F2026-00001 o A2026-00001 */
   code: string;
+  kind?: InvoiceKind;
   issue_date: string;
   member_id: string | null;
   issuer: InvoiceParty;
@@ -203,6 +207,28 @@ export interface IssuedInvoice {
   /** Ruta del PDF en el bucket `invoices` (null si aún no se ha guardado) */
   pdf_path: string | null;
   created_at?: string;
+}
+
+/** NIF y dirección del socio, para sus facturas */
+export interface MemberBilling {
+  nif: string | null;
+  address1: string | null;
+  address2: string | null;
+}
+
+/** Cliente de una factura de asesoría (escrito a mano) */
+export interface ManualInvoiceClient {
+  name: string;
+  nif: string;
+  address1: string;
+  address2: string | null;
+}
+
+/** Línea de una factura de asesoría: precio unitario SIN IVA */
+export interface ManualInvoiceLine {
+  concept: string;
+  quantity: number;
+  price: number;
 }
 
 /** Cuota cobrada este mes, aún sin facturar */
@@ -253,6 +279,10 @@ export interface Member {
   month_used?: number;
   /** Tope mensual del plan (null = sin tope) */
   month_limit?: number | null;
+  /** NIF y dirección para sus facturas (solo en demo viajan con el socio) */
+  nif?: string | null;
+  address1?: string | null;
+  address2?: string | null;
   created_at?: string;
 }
 

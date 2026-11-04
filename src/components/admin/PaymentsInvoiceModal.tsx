@@ -1,12 +1,19 @@
 import { useEffect, useState } from 'react';
 import { FilePlus, Loader2, Receipt } from 'lucide-react';
 import Modal from '../Modal';
-import { ClientPreview, emitirPdf, InvoiceIssuedView, IssuerMissing, type EmisionPdf } from './InvoiceShared';
-import { fetchBillingSettings, issueInvoiceFromPayments } from '../../lib/api';
+import {
+  ClientPreview,
+  emitirPdf,
+  InvoiceIssuedView,
+  IssuerMissing,
+  memberParty,
+  type EmisionPdf,
+} from './InvoiceShared';
+import { fetchBillingSettings, fetchMembersBilling, issueInvoiceFromPayments } from '../../lib/api';
 import { invoiceTotals, lineAmounts, VAT_RATE } from '../../lib/invoiceMath';
 import { formatDateES, todayISO } from '../../lib/dates';
 import { useAuth } from '../../lib/auth';
-import { memberFullName, type Member, type MonthPaymentStatus } from '../../lib/types';
+import { memberFullName, type Member, type MemberBilling, type MonthPaymentStatus } from '../../lib/types';
 
 const EUR = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
 const mesActual = () =>
@@ -30,6 +37,7 @@ export default function PaymentsInvoiceModal({
 }) {
   const { logoUrl } = useAuth();
   const [emisorOk, setEmisorOk] = useState<boolean | null>(null);
+  const [fiscal, setFiscal] = useState<MemberBilling | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultado, setResultado] = useState<EmisionPdf | null>(null);
@@ -40,7 +48,13 @@ export default function PaymentsInvoiceModal({
     setError(null);
     setResultado(null);
     setEmisorOk(null);
+    setFiscal(null);
     let active = true;
+    const id = member.id;
+    // NIF y dirección del socio, para enseñar lo que saldrá (si falla, sin ellos)
+    void fetchMembersBilling()
+      .then((all) => active && setFiscal(all[id] ?? null))
+      .catch(() => undefined);
     fetchBillingSettings()
       .then((b) => active && setEmisorOk(Boolean(b.issuer_name?.trim() && b.issuer_nif?.trim())))
       .catch(() => active && setEmisorOk(true)); // si no se puede comprobar, lo dirá el servidor
@@ -88,7 +102,7 @@ export default function PaymentsInvoiceModal({
         <div className="space-y-4">
           {!emisorOk && <IssuerMissing />}
 
-          <ClientPreview member={member} />
+          <ClientPreview party={memberParty(member, fiscal)} />
 
           {/* Cuotas que entran */}
           <div>

@@ -605,7 +605,8 @@ function InvoicesDownloadModal({
       if (issued.length > 0) {
         const logo = loadInvoiceLogo(logoUrl);
         for (const inv of [...issued].sort((a, b) => a.number - b.number)) {
-          files[`emitidas/${invoiceFileName(inv)}`] = await issuedBytes(inv, logo);
+          const carpeta = inv.kind === 'asesoria' ? 'asesorias' : 'emitidas';
+          files[`${carpeta}/${invoiceFileName(inv)}`] = await issuedBytes(inv, logo);
         }
       }
       // Gastos: como hasta ahora, día_concepto

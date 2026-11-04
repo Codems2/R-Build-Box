@@ -1,8 +1,14 @@
-import { AlertTriangle, CheckCircle2, Download, Mail, Phone, User } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Download, IdCard, Mail, MapPin, Phone, User } from 'lucide-react';
 import { saveIssuedInvoicePdf } from '../../lib/api';
 import { buildInvoicePdf, downloadPdf, invoiceFileName, loadInvoiceLogo } from '../../lib/invoicePdf';
 import { formatDateES } from '../../lib/dates';
-import { memberFullName, type IssuedInvoice, type Member } from '../../lib/types';
+import {
+  memberFullName,
+  type InvoiceParty,
+  type IssuedInvoice,
+  type Member,
+  type MemberBilling,
+} from '../../lib/types';
 
 const EUR = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
 
@@ -85,27 +91,39 @@ export function InvoiceIssuedView({ emision, onClose }: { emision: EmisionPdf; o
   );
 }
 
-/** Datos del socio que saldrán en la factura: solo los que tenga rellenos */
-export function ClientPreview({ member }: { member: Member }) {
+/** Datos del cliente tal y como saldrán: socio + su NIF y dirección (si los tiene) */
+export function memberParty(member: Member, billing?: MemberBilling | null): InvoiceParty {
+  const t = (v: string | null | undefined) => (v?.trim() ? v.trim() : null);
+  return {
+    name: memberFullName(member),
+    nif: t(billing?.nif)?.replace(/[\s-]/g, '').toUpperCase() ?? null,
+    address1: t(billing?.address1),
+    address2: t(billing?.address2),
+    phone: t(member.phone),
+    email: t(member.email),
+  };
+}
+
+function Fila({ icon: Icon, children }: { icon: typeof User; children: string }) {
+  return (
+    <p className="flex min-w-0 items-center gap-2 text-xs text-zinc-200">
+      <Icon className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+      <span className="truncate">{children}</span>
+    </p>
+  );
+}
+
+/** Datos del cliente que saldrán en la factura: solo los que estén rellenos */
+export function ClientPreview({ party }: { party: InvoiceParty }) {
+  const direccion = [party.address1, party.address2].filter(Boolean).join(' · ');
   return (
     <div className="space-y-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Saldrá en la factura</p>
-      <p className="flex min-w-0 items-center gap-2 text-xs text-zinc-200">
-        <User className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-        <span className="truncate">{memberFullName(member)}</span>
-      </p>
-      {member.phone?.trim() && (
-        <p className="flex min-w-0 items-center gap-2 text-xs text-zinc-200">
-          <Phone className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-          <span className="truncate">{member.phone.trim()}</span>
-        </p>
-      )}
-      {member.email?.trim() && (
-        <p className="flex min-w-0 items-center gap-2 text-xs text-zinc-200">
-          <Mail className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-          <span className="truncate">{member.email.trim()}</span>
-        </p>
-      )}
+      <Fila icon={User}>{party.name}</Fila>
+      {party.nif && <Fila icon={IdCard}>{`NIF ${party.nif}`}</Fila>}
+      {direccion && <Fila icon={MapPin}>{direccion}</Fila>}
+      {party.phone && <Fila icon={Phone}>{party.phone}</Fila>}
+      {party.email && <Fila icon={Mail}>{party.email}</Fila>}
     </div>
   );
 }

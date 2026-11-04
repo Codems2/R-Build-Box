@@ -12,9 +12,14 @@ import type {
   FinanceEntry,
   FinanceEntryInput,
   InvoiceItemInput,
+  InvoiceKind,
   InvoiceLine,
+  InvoiceParty,
   IssuedInvoice,
+  ManualInvoiceClient,
+  ManualInvoiceLine,
   Member,
+  MemberBilling,
   MonthPaymentStatus,
   MemberIncomeRow,
   MemberInput,
@@ -27,7 +32,15 @@ import type {
   WeekStatus,
 } from './types';
 import { countKey, memberFullName } from './types';
-import { capFirst, invoiceTotals, lineAmounts, VAT_RATE } from './invoiceMath';
+import {
+  capFirst,
+  invoiceTotals,
+  lineAmounts,
+  manualLineAmounts,
+  manualTotals,
+  round2,
+  VAT_RATE,
+} from './invoiceMath';
 import { mondayOfWeekISO, shiftISO, todayISO } from './dates';
 
 const LS_SETTINGS = 'rmbox_settings_v1';
@@ -1252,6 +1265,12 @@ const INVOICE_ERROR_MESSAGES: Record<string, string> = {
   BAD_QUANTITY: 'Las cantidades deben estar entre 1 y 99.',
   PLAN_NOT_FOUND: 'Uno de los productos ya no existe. Recarga la página.',
   NO_PAYMENTS: 'Este socio no tiene cuotas de este mes pendientes de facturar.',
+  CLIENT_NAME_MISSING: 'Escribe el nombre y apellidos (o la razón social) del cliente.',
+  CLIENT_NIF_MISSING: 'Escribe el NIF del cliente.',
+  CLIENT_ADDRESS_MISSING: 'Escribe la dirección del cliente.',
+  BAD_CONCEPT: 'Cada línea necesita un concepto (máx. 120 caracteres).',
+  BAD_AMOUNT: 'Revisa las cantidades y los precios: deben ser números.',
+  BAD_PRICE: 'Los precios deben ser mayores que 0.',
   ZERO_PRICE: 'Uno de los productos no tiene precio.',
   NOT_ADMIN: 'Solo un administrador puede emitir facturas.',
 };
@@ -1353,16 +1372,48 @@ async function issueInvoiceDemo(
 }
 
 /** Demo: parte común de emitir (numeración correlativa y foto de los datos) */
+/** Demo: factura del box para un socio (precios con IVA incluido) */
 function createIssuedDemo(
   member: Member,
   issueDate: string,
   lines: InvoiceLine[],
   billing: BillingSettings,
 ): IssuedInvoice {
+  const t = (v: string | null | undefined) => (v?.trim() ? v.trim() : null);
+  const client: InvoiceParty = { name: memberFullName(member) };
+  if (t(member.nif)) client.nif = t(member.nif)!.toUpperCase();
+  if (t(member.address1)) client.address1 = t(member.address1);
+  if (t(member.address2)) client.address2 = t(member.address2);
+  if (t(member.phone)) client.phone = t(member.phone);
+  if (t(member.email)) client.email = t(member.email);
+  return createInvoiceDemo({
+    prefix: 'F',
+    kind: 'box',
+    memberId: member.id,
+    client,
+    issueDate,
+    lines,
+    ...invoiceTotals(lines),
+    billing,
+  });
+}
+
+/** Demo: alta de una factura en su serie (numeración correlativa por serie) */
+function createInvoiceDemo(o: {
+  prefix: 'F' | 'A';
+  kind: InvoiceKind;
+  memberId: string | null;
+  client: InvoiceParty;
+  issueDate: string;
+  lines: InvoiceLine[];
+  base: number;
+  vat: number;
+  total: number;
+  billing: BillingSettings;
+}): IssuedInvoice {
+  const { billing, issueDate } = o;
   if (!billing.issuer_name || !billing.issuer_nif) throw invoiceError('ISSUER_MISSING');
-  const memberId = member.id;
-  const year = issueDate.slice(0, 4);
-  const series = `F${year}`;
+  const series = `${o.prefix}${issueDate.slice(0, 4)}`;
   const all = readLS<IssuedInvoice[]>(LS_ISSUED, []);
   const same = all.filter((i) => i.series === series);
   const lastDate = same.reduce<string | null>((d, i) => (!d || i.issue_date > d ? i.issue_date : d), null);
@@ -1370,34 +1421,130 @@ function createIssuedDemo(
     throw invoiceError(`DATE_BEFORE_LAST:${lastDate.split('-').reverse().join('/')}`);
   }
   const number = same.reduce((n, i) => Math.max(n, i.number), 0) + 1;
-  const name = memberFullName(member);
-  const totals = invoiceTotals(lines);
   const inv: IssuedInvoice = {
     id: newId(),
     series,
     number,
     code: `${series}-${String(number).padStart(5, '0')}`,
+    kind: o.kind,
     issue_date: issueDate,
-    member_id: memberId,
+    member_id: o.memberId,
     issuer: {
       name: billing.issuer_name,
       nif: billing.issuer_nif,
       address1: billing.issuer_address1,
       address2: billing.issuer_address2,
     },
-    client: {
-      name,
-      ...(member.phone?.trim() ? { phone: member.phone.trim() } : {}),
-      ...(member.email?.trim() ? { email: member.email.trim() } : {}),
-    },
-    lines,
+    client: o.client,
+    lines: o.lines,
     vat_rate: VAT_RATE,
-    ...totals,
+    base: o.base,
+    vat: o.vat,
+    total: o.total,
     pdf_path: null,
     created_at: new Date().toISOString(),
   };
   writeLS(LS_ISSUED, [...all, inv]);
   return inv;
+}
+
+// ----- Facturas de asesorías (todo a mano, precios sin IVA) -------------------
+
+/** Emite una factura de asesoría (serie A): cliente y conceptos escritos a mano */
+export async function issueManualInvoice(
+  issueDate: string,
+  client: ManualInvoiceClient,
+  lines: ManualInvoiceLine[],
+): Promise<IssuedInvoice> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.rpc('issue_manual_invoice', {
+      p_issue_date: issueDate,
+      p_client: client,
+      p_lines: lines,
+    });
+    if (error) throw invoiceError(error.message);
+    return normalizeInvoice(data);
+  }
+  // Demo: mismas comprobaciones que issue_manual_invoice
+  const billing = await fetchBillingSettings();
+  if (!billing.issuer_name || !billing.issuer_nif) throw invoiceError('ISSUER_MISSING');
+  if (!issueDate || issueDate > todayISO()) throw invoiceError('DATE_IN_FUTURE');
+  const sp = (v: string | null | undefined) => (v ?? '').replace(/\s+/g, ' ').trim();
+  const name = sp(client.name);
+  const nif = (client.nif ?? '').replace(/[\s-]/g, '').toUpperCase();
+  const address1 = sp(client.address1);
+  const address2 = sp(client.address2);
+  if (!name || name.length > 120) throw invoiceError('CLIENT_NAME_MISSING');
+  if (nif.length < 3 || nif.length > 20) throw invoiceError('CLIENT_NIF_MISSING');
+  if (!address1 || address1.length > 120 || address2.length > 120) throw invoiceError('CLIENT_ADDRESS_MISSING');
+  if (lines.length === 0) throw invoiceError('NO_ITEMS');
+  if (lines.length > 10) throw invoiceError('TOO_MANY_ITEMS');
+  const built: InvoiceLine[] = lines.map((l) => {
+    const concept = sp(l.concept);
+    if (!concept || concept.length > 120) throw invoiceError('BAD_CONCEPT');
+    if (!(l.quantity > 0) || l.quantity > 9999 || round2(l.quantity) !== l.quantity) throw invoiceError('BAD_QUANTITY');
+    if (!(l.price > 0) || l.price > 999999) throw invoiceError('BAD_PRICE');
+    const price = round2(l.price);
+    const { base, total } = manualLineAmounts(l.quantity, price);
+    return {
+      concept,
+      detail: null,
+      quantity: l.quantity,
+      unit_price: price,
+      unit_price_with_vat: Math.round(price * (1 + VAT_RATE / 100) * 10000) / 10000,
+      vat_rate: VAT_RATE,
+      base,
+      total,
+    };
+  });
+  return createInvoiceDemo({
+    prefix: 'A',
+    kind: 'asesoria',
+    memberId: null,
+    client: { name, nif, address1, ...(address2 ? { address2 } : {}) },
+    issueDate,
+    lines: built,
+    ...manualTotals(built),
+    billing,
+  });
+}
+
+// ----- NIF y dirección de los socios ------------------------------------------
+
+/** NIF y dirección de cada socio (solo admin) */
+export async function fetchMembersBilling(): Promise<Record<string, MemberBilling>> {
+  const out: Record<string, MemberBilling> = {};
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.from('profiles').select('id, nif, address1, address2');
+    if (error) throw error;
+    for (const r of (data ?? []) as (MemberBilling & { id: string })[]) {
+      out[r.id] = { nif: r.nif ?? null, address1: r.address1 ?? null, address2: r.address2 ?? null };
+    }
+    return out;
+  }
+  for (const m of readLS<Member[]>(LS_MEMBERS, [])) {
+    out[m.id] = { nif: m.nif ?? null, address1: m.address1 ?? null, address2: m.address2 ?? null };
+  }
+  return out;
+}
+
+/** Guarda el NIF y la dirección en la ficha del socio (vacío = se borra) */
+export async function updateMemberBilling(memberId: string, b: MemberBilling): Promise<void> {
+  const clean = (v: string | null) => (v && v.trim() ? v.trim().replace(/\s+/g, ' ') : null);
+  const patch: MemberBilling = {
+    nif: clean(b.nif)?.replace(/[\s-]/g, '').toUpperCase() ?? null,
+    address1: clean(b.address1),
+    address2: clean(b.address2),
+  };
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from('profiles').update(patch).eq('id', memberId);
+    if (error) throw new Error('No se pudieron guardar el NIF y la dirección del socio.');
+    return;
+  }
+  writeLS(
+    LS_MEMBERS,
+    readLS<Member[]>(LS_MEMBERS, []).map((m) => (m.id === memberId ? { ...m, ...patch } : m)),
+  );
 }
 
 // ----- Facturar las cuotas del mes desde la lista de socios -----------------
@@ -1534,21 +1681,21 @@ export async function fetchIssuedInvoices(fromISO: string, toISO: string): Promi
 }
 
 /** Fecha de la última factura emitida (las nuevas no pueden ser anteriores) */
-export async function fetchLastInvoiceDate(): Promise<string | null> {
+export async function fetchLastInvoiceDate(kind: InvoiceKind = 'box'): Promise<string | null> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase
       .from('issued_invoices')
       .select('issue_date')
+      .eq('kind', kind)
       .order('issue_date', { ascending: false })
       .limit(1)
       .maybeSingle();
     if (error) throw error;
     return (data as { issue_date: string } | null)?.issue_date ?? null;
   }
-  return readLS<IssuedInvoice[]>(LS_ISSUED, []).reduce<string | null>(
-    (d, i) => (!d || i.issue_date > d ? i.issue_date : d),
-    null,
-  );
+  return readLS<IssuedInvoice[]>(LS_ISSUED, [])
+    .filter((i) => (i.kind ?? 'box') === kind)
+    .reduce<string | null>((d, i) => (!d || i.issue_date > d ? i.issue_date : d), null);
 }
 
 /** Sube el PDF de una factura emitida y apunta su ruta. Devuelve la ruta. */

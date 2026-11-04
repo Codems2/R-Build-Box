@@ -44,6 +44,8 @@ const SIN_TILDE: Record<string, string> = {
 
 const fmt2 = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmt4 = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+/** Cantidad: entera en el box; en asesorías puede llevar decimales (1,5 h) */
+const fmtCant = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 2 });
 const eur = (n: number) => `${fmt2.format(n)} €`;
 const fechaES = (iso: string) => iso.split('-').reverse().join('/');
 
@@ -146,7 +148,8 @@ export async function buildInvoicePdf(inv: IssuedInvoice, logoPng: Uint8Array | 
     inv.issuer.address2,
   ].filter((l): l is string => Boolean(l));
   let logoDibujado = false;
-  if (logoPng) {
+  // Las asesorías no llevan el logo del box
+  if (logoPng && inv.kind !== 'asesoria') {
     try {
       const img = await pdf.embedPng(logoPng);
       const s = Math.min(LOGO.lado / img.width, LOGO.lado / img.height);
@@ -211,7 +214,7 @@ export async function buildInvoicePdf(inv: IssuedInvoice, logoPng: Uint8Array | 
   for (const l of inv.lines) {
     const conc = partir(l.concept, bold, 9, T.concepto.maxW);
     conc.forEach((c, k) => texto(c, T.concepto.x, base + k * 11.5, 9, bold, C.tinta));
-    centro(String(l.quantity), T.cant.centro, base, 9, reg, C.tinta);
+    centro(fmtCant.format(l.quantity), T.cant.centro, base, 9, reg, C.tinta);
     derecha(precioUnitario(l), T.precio.der, base, 9, reg, C.tinta);
     texto(`${fmt2.format(l.vat_rate).replace(',00', '')} %`, T.iva.x, base, 9, reg, C.tinta);
     derecha(eur(l.base), T.importe.der, base, 9, reg, C.tinta);
