@@ -2,6 +2,7 @@ import { supabase, isSupabaseConfigured } from './supabase';
 import { DEMO_CLASS_TYPES, DEMO_SLOTS } from './demoData';
 import type {
   AppSettings,
+  BillingSettings,
   Booking,
   BookingCounts,
   ClassCredit,
@@ -10,6 +11,9 @@ import type {
   MemberUsage,
   FinanceEntry,
   FinanceEntryInput,
+  InvoiceItemInput,
+  InvoiceLine,
+  IssuedInvoice,
   Member,
   MemberIncomeRow,
   MemberInput,
@@ -21,7 +25,8 @@ import type {
   SlotInput,
   WeekStatus,
 } from './types';
-import { countKey } from './types';
+import { countKey, memberFullName } from './types';
+import { capFirst, invoiceTotals, lineAmounts, VAT_RATE } from './invoiceMath';
 import { mondayOfWeekISO, shiftISO, todayISO } from './dates';
 
 const LS_SETTINGS = 'rmbox_settings_v1';
@@ -1176,6 +1181,265 @@ export async function deleteInvoice(path: string): Promise<void> {
   if (isSupabaseConfigured && supabase) {
     await supabase.storage.from('invoices').remove([path]);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Facturas emitidas a los socios (solo admin)
+//
+// La base de datos asigna el número (correlativo por año) y guarda una foto de
+// los datos; el PDF se genera en el navegador (lib/invoicePdf) y se sube al
+// bucket `invoices`, en emitidas/<año>/<número>.pdf.
+// ---------------------------------------------------------------------------
+
+const LS_BILLING = 'rmbox_billing_v1';
+const LS_ISSUED = 'rmbox_issued_invoices_v1';
+
+const EMPTY_BILLING: BillingSettings = {
+  issuer_name: null,
+  issuer_nif: null,
+  issuer_address1: null,
+  issuer_address2: null,
+};
+
+/** Datos fiscales del box (emisor de las facturas) */
+export async function fetchBillingSettings(): Promise<BillingSettings> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase
+      .from('billing_settings')
+      .select('issuer_name, issuer_nif, issuer_address1, issuer_address2')
+      .eq('id', true)
+      .maybeSingle();
+    if (error) throw error;
+    return (data as BillingSettings | null) ?? EMPTY_BILLING;
+  }
+  return { ...EMPTY_BILLING, ...readLS<Partial<BillingSettings>>(LS_BILLING, {}) };
+}
+
+export async function updateBillingSettings(input: BillingSettings): Promise<void> {
+  const clean = (v: string | null) => (v && v.trim() ? v.trim().replace(/\s+/g, ' ') : null);
+  const row: BillingSettings = {
+    issuer_name: clean(input.issuer_name),
+    issuer_nif: clean(input.issuer_nif)?.replace(/[\s-]/g, '').toUpperCase() ?? null,
+    issuer_address1: clean(input.issuer_address1),
+    issuer_address2: clean(input.issuer_address2),
+  };
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase
+      .from('billing_settings')
+      .update({ ...row, updated_at: new Date().toISOString() })
+      .eq('id', true);
+    if (error) throw error;
+    return;
+  }
+  writeLS(LS_BILLING, row);
+}
+
+const INVOICE_ERROR_MESSAGES: Record<string, string> = {
+  ISSUER_MISSING: 'Faltan los datos de facturación del box. Complétalos en Configuración.',
+  MEMBER_NOT_FOUND: 'No se ha encontrado el cliente.',
+  DATE_IN_FUTURE: 'La fecha de la factura no puede ser posterior a hoy.',
+  NO_ITEMS: 'Añade al menos un producto.',
+  TOO_MANY_ITEMS: 'Una factura admite como máximo 10 productos.',
+  BAD_QUANTITY: 'Las cantidades deben estar entre 1 y 99.',
+  PLAN_NOT_FOUND: 'Uno de los productos ya no existe. Recarga la página.',
+  ZERO_PRICE: 'Uno de los productos no tiene precio.',
+  NOT_ADMIN: 'Solo un administrador puede emitir facturas.',
+};
+
+function invoiceError(raw: string): Error {
+  const before = /DATE_BEFORE_LAST:(\S+)/.exec(raw);
+  if (before) {
+    return new Error(
+      `La fecha no puede ser anterior a la de la última factura emitida (${before[1]}).`,
+    );
+  }
+  const code = Object.keys(INVOICE_ERROR_MESSAGES).find((c) => raw.includes(c));
+  return new Error(code ? INVOICE_ERROR_MESSAGES[code] : 'No se pudo emitir la factura. Inténtalo de nuevo.');
+}
+
+/** numeric llega como texto o número según la vía: lo dejamos siempre en número */
+function normalizeInvoice(raw: unknown): IssuedInvoice {
+  const r = raw as IssuedInvoice;
+  return {
+    ...r,
+    number: Number(r.number),
+    vat_rate: Number(r.vat_rate),
+    base: Number(r.base),
+    vat: Number(r.vat),
+    total: Number(r.total),
+    lines: (r.lines ?? []).map((l) => ({
+      ...l,
+      quantity: Number(l.quantity),
+      unit_price: Number(l.unit_price),
+      unit_price_with_vat: Number(l.unit_price_with_vat),
+      vat_rate: Number(l.vat_rate),
+      base: Number(l.base),
+      total: Number(l.total),
+    })),
+  };
+}
+
+/** Emite la factura: asigna número, guarda la foto de los datos y la devuelve */
+export async function issueInvoice(
+  memberId: string,
+  issueDate: string,
+  items: InvoiceItemInput[],
+): Promise<IssuedInvoice> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.rpc('issue_invoice', {
+      p_member_id: memberId,
+      p_issue_date: issueDate,
+      p_items: items,
+    });
+    if (error) throw invoiceError(error.message);
+    return normalizeInvoice(data);
+  }
+  return issueInvoiceDemo(memberId, issueDate, items);
+}
+
+/** Demo: misma lógica que issue_invoice, guardada en este navegador */
+async function issueInvoiceDemo(
+  memberId: string,
+  issueDate: string,
+  items: InvoiceItemInput[],
+): Promise<IssuedInvoice> {
+  const billing = await fetchBillingSettings();
+  if (!billing.issuer_name || !billing.issuer_nif) throw invoiceError('ISSUER_MISSING');
+  const member = readLS<Member[]>(LS_MEMBERS, []).find((m) => m.id === memberId);
+  if (!member) throw invoiceError('MEMBER_NOT_FOUND');
+  if (!issueDate || issueDate > todayISO()) throw invoiceError('DATE_IN_FUTURE');
+  if (items.length === 0) throw invoiceError('NO_ITEMS');
+  if (items.length > 10) throw invoiceError('TOO_MANY_ITEMS');
+
+  const merged = new Map<string, InvoiceItemInput>();
+  for (const it of items) {
+    const k = it.plan_id ?? '';
+    merged.set(k, { plan_id: it.plan_id, quantity: (merged.get(k)?.quantity ?? 0) + it.quantity });
+  }
+  const plans = readLS<Plan[]>(LS_PLANS, []);
+  const fee = (await fetchAppSettings()).default_monthly_fee;
+  const lines: InvoiceLine[] = [];
+  for (const it of merged.values()) {
+    if (!Number.isInteger(it.quantity) || it.quantity < 1 || it.quantity > 99) {
+      throw invoiceError('BAD_QUANTITY');
+    }
+    const plan = it.plan_id ? plans.find((p) => p.id === it.plan_id) : null;
+    if (it.plan_id && !plan) throw invoiceError('PLAN_NOT_FOUND');
+    const price = plan ? plan.monthly_price : fee;
+    if (!(price > 0)) throw invoiceError('ZERO_PRICE');
+    const { total, base } = lineAmounts(price, it.quantity);
+    lines.push({
+      concept: plan ? capFirst(plan.name.trim()) : 'Cuota estándar',
+      detail: plan ? (plan.description?.trim() ? capFirst(plan.description.trim()) : null) : 'Cuota mensual',
+      quantity: it.quantity,
+      unit_price: Math.round((price / (1 + VAT_RATE / 100)) * 10000) / 10000,
+      unit_price_with_vat: price,
+      vat_rate: VAT_RATE,
+      base,
+      total,
+    });
+  }
+
+  const year = issueDate.slice(0, 4);
+  const series = `F${year}`;
+  const all = readLS<IssuedInvoice[]>(LS_ISSUED, []);
+  const same = all.filter((i) => i.series === series);
+  const lastDate = same.reduce<string | null>((d, i) => (!d || i.issue_date > d ? i.issue_date : d), null);
+  if (lastDate && issueDate < lastDate) {
+    throw invoiceError(`DATE_BEFORE_LAST:${lastDate.split('-').reverse().join('/')}`);
+  }
+  const number = same.reduce((n, i) => Math.max(n, i.number), 0) + 1;
+  const name = memberFullName(member);
+  const totals = invoiceTotals(lines);
+  const inv: IssuedInvoice = {
+    id: newId(),
+    series,
+    number,
+    code: `${series}-${String(number).padStart(5, '0')}`,
+    issue_date: issueDate,
+    member_id: memberId,
+    issuer: {
+      name: billing.issuer_name,
+      nif: billing.issuer_nif,
+      address1: billing.issuer_address1,
+      address2: billing.issuer_address2,
+    },
+    client: {
+      name,
+      ...(member.phone?.trim() ? { phone: member.phone.trim() } : {}),
+      ...(member.email?.trim() ? { email: member.email.trim() } : {}),
+    },
+    lines,
+    vat_rate: VAT_RATE,
+    ...totals,
+    pdf_path: null,
+    created_at: new Date().toISOString(),
+  };
+  writeLS(LS_ISSUED, [...all, inv]);
+  return inv;
+}
+
+/** Facturas emitidas entre dos fechas (incluidas), de la más reciente a la más antigua */
+export async function fetchIssuedInvoices(fromISO: string, toISO: string): Promise<IssuedInvoice[]> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase
+      .from('issued_invoices')
+      .select('*')
+      .gte('issue_date', fromISO)
+      .lte('issue_date', toISO)
+      .order('issue_date', { ascending: false })
+      .order('number', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(normalizeInvoice);
+  }
+  return readLS<IssuedInvoice[]>(LS_ISSUED, [])
+    .filter((i) => i.issue_date >= fromISO && i.issue_date <= toISO)
+    .sort((a, b) => b.issue_date.localeCompare(a.issue_date) || b.number - a.number);
+}
+
+/** Fecha de la última factura emitida (las nuevas no pueden ser anteriores) */
+export async function fetchLastInvoiceDate(): Promise<string | null> {
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase
+      .from('issued_invoices')
+      .select('issue_date')
+      .order('issue_date', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return (data as { issue_date: string } | null)?.issue_date ?? null;
+  }
+  return readLS<IssuedInvoice[]>(LS_ISSUED, []).reduce<string | null>(
+    (d, i) => (!d || i.issue_date > d ? i.issue_date : d),
+    null,
+  );
+}
+
+/** Sube el PDF de una factura emitida y apunta su ruta. Devuelve la ruta. */
+export async function saveIssuedInvoicePdf(inv: IssuedInvoice, bytes: Uint8Array): Promise<string> {
+  const blob = new Blob([bytes.slice().buffer as ArrayBuffer], { type: 'application/pdf' });
+  if (isSupabaseConfigured && supabase) {
+    const path = `emitidas/${inv.series.slice(1)}/${inv.code}.pdf`;
+    const { error: upErr } = await supabase.storage
+      .from('invoices')
+      .upload(path, blob, { contentType: 'application/pdf', upsert: true });
+    if (upErr) throw new Error('No se pudo guardar el PDF de la factura.');
+    const { error } = await supabase.rpc('attach_invoice_pdf', { p_invoice_id: inv.id, p_path: path });
+    if (error) throw new Error('No se pudo guardar el PDF de la factura.');
+    return path;
+  }
+  // Demo: el PDF se guarda embebido como data URL
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('No se pudo guardar el PDF de la factura.'));
+    reader.readAsDataURL(blob);
+  });
+  writeLS(
+    LS_ISSUED,
+    readLS<IssuedInvoice[]>(LS_ISSUED, []).map((i) => (i.id === inv.id ? { ...i, pdf_path: dataUrl } : i)),
+  );
+  return dataUrl;
 }
 
 /** Extrae el mensaje de error del cuerpo JSON de una Edge Function */

@@ -4,6 +4,7 @@ import { CalendarClock, CalendarRange, Check, Euro, Gift, Image as ImageIcon, Lo
 import { fetchAppSettings, resetLogo, updateAppSettings, uploadLogo } from '../../lib/api';
 import { applyPwaBranding, resetPwaBranding } from '../../lib/pwaBranding';
 import { useAuth } from '../../lib/auth';
+import BillingSettingsCard from './BillingSettingsCard';
 
 export default function SettingsManager() {
   const { logoUrl, refreshBranding } = useAuth();
@@ -146,6 +147,8 @@ export default function SettingsManager() {
           </div>
         </div>
       </motion.div>
+
+      <BillingSettingsCard />
 
       <motion.div
         layout

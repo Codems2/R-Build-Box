@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  FilePlus,
   FileText,
   Loader2,
   Paperclip,
@@ -23,20 +24,25 @@ import { zipSync } from 'fflate';
 import Modal from '../Modal';
 import AdaptiveActions, { type ActionItem } from '../AdaptiveActions';
 import FinanceChart, { type ChartRange, type ChartView, type MonthDatum } from './FinanceChart';
+import GenerateInvoiceModal from './GenerateInvoiceModal';
 import {
   createFinanceEntry,
   deleteFinanceEntry,
   deleteInvoice,
   downloadInvoiceBytes,
   fetchFinanceEntries,
+  fetchIssuedInvoices,
   fetchMemberIncome,
   getInvoiceUrl,
+  saveIssuedInvoicePdf,
   updateFinanceEntry,
   uploadInvoice,
 } from '../../lib/api';
-import { todayISO } from '../../lib/dates';
+import { buildInvoicePdf, downloadPdf, invoiceFileName, loadInvoiceLogo } from '../../lib/invoicePdf';
+import { useAuth } from '../../lib/auth';
+import { formatDateES, todayISO } from '../../lib/dates';
 import { isMobileDevice } from '../../lib/pwa';
-import type { FinanceEntry, FinanceKind, MemberIncomeRow } from '../../lib/types';
+import type { FinanceEntry, FinanceKind, IssuedInvoice, MemberIncomeRow } from '../../lib/types';
 
 const EUR = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
 
@@ -106,6 +112,7 @@ export default function FinanceManager() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<FinanceEntry | null>(null);
   const [downloadOpen, setDownloadOpen] = useState(false);
+  const [generateOpen, setGenerateOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   // Filtros de la gráfica: rango temporal y qué se dibuja
@@ -211,20 +218,44 @@ export default function FinanceManager() {
   return (
     <section>
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="font-display text-lg font-bold text-white">Ingresos y gastos</h2>
-        <div className="flex items-center gap-2">
+        <h2 className="min-w-0 truncate font-display text-lg font-bold text-white">Ingresos y gastos</h2>
+        <div className="flex shrink-0 items-center gap-2">
           <button
             onClick={() => setDownloadOpen(true)}
-            className="btn-ghost !px-3 !py-2 text-xs"
+            className="btn-ghost hidden !px-3 !py-2 text-xs sm:inline-flex"
             title="Descargar facturas del mes"
+            aria-label="Descargar facturas"
           >
-            <Download className="h-4 w-4" />
-            <span className="hidden sm:inline">Facturas</span>
+            <Download className="h-4 w-4" /> Facturas
+          </button>
+          <button
+            onClick={() => setGenerateOpen(true)}
+            className="btn-ghost hidden !px-3 !py-2 text-xs sm:inline-flex"
+            title="Generar una factura para un cliente"
+          >
+            <FilePlus className="h-4 w-4" /> Generar factura
           </button>
           <button onClick={() => setCreating(true)} className="btn-primary !px-3.5 !py-2 text-xs">
             <Plus className="h-4 w-4" /> Añadir
           </button>
         </div>
+      </div>
+
+      {/* Móvil: las facturas van en su propia fila para que quepan con su nombre */}
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:hidden">
+        <button
+          onClick={() => setDownloadOpen(true)}
+          className="btn-ghost whitespace-nowrap !px-2 !py-2 text-xs"
+          aria-label="Descargar facturas"
+        >
+          <Download className="h-4 w-4 shrink-0" /> Facturas
+        </button>
+        <button
+          onClick={() => setGenerateOpen(true)}
+          className="btn-ghost whitespace-nowrap !px-2 !py-2 text-xs"
+        >
+          <FilePlus className="h-4 w-4 shrink-0" /> Generar factura
+        </button>
       </div>
 
       {/* Selector de mes */}
@@ -464,6 +495,7 @@ export default function FinanceManager() {
         defaultYm={ym}
         onClose={() => setDownloadOpen(false)}
       />
+      <GenerateInvoiceModal open={generateOpen} onClose={() => setGenerateOpen(false)} />
     </section>
   );
 }
@@ -500,9 +532,12 @@ function InvoicesDownloadModal({
   defaultYm: string;
   onClose: () => void;
 }) {
+  const { logoUrl } = useAuth();
   const [ym, setYm] = useState(defaultYm);
   const [invoices, setInvoices] = useState<FinanceEntry[] | null>(null);
+  const [issued, setIssued] = useState<IssuedInvoice[] | null>(null);
   const [zipping, setZipping] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -512,15 +547,18 @@ function InvoicesDownloadModal({
     }
   }, [open, defaultYm]);
 
-  // Gastos con factura del mes elegido
+  // Facturas del mes elegido: las emitidas a clientes y las de los gastos
   useEffect(() => {
     if (!open) return;
     let active = true;
     setInvoices(null);
+    setIssued(null);
     const { from, to } = monthRange(ym);
-    fetchFinanceEntries(from, to)
-      .then((all) => {
-        if (active) setInvoices(all.filter((e) => e.kind === 'expense' && e.invoice_path));
+    Promise.all([fetchFinanceEntries(from, to), fetchIssuedInvoices(from, to)])
+      .then(([all, emitidas]) => {
+        if (!active) return;
+        setInvoices(all.filter((e) => e.kind === 'expense' && e.invoice_path));
+        setIssued(emitidas);
       })
       .catch(() => active && setError('No se pudieron consultar las facturas.'));
     return () => {
@@ -528,12 +566,49 @@ function InvoicesDownloadModal({
     };
   }, [open, ym]);
 
+  /** PDF de una factura emitida: el guardado o, si no se llegó a subir, uno nuevo */
+  async function issuedBytes(inv: IssuedInvoice, logo: Promise<Uint8Array | null>): Promise<Uint8Array> {
+    if (inv.pdf_path) {
+      try {
+        return await downloadInvoiceBytes(inv.pdf_path);
+      } catch {
+        /* se regenera a partir de los datos guardados */
+      }
+    }
+    const bytes = await buildInvoicePdf(inv, await logo);
+    if (!inv.pdf_path) await saveIssuedInvoicePdf(inv, bytes).catch(() => undefined);
+    return bytes;
+  }
+
+  async function downloadOne(inv: IssuedInvoice) {
+    setBusyId(inv.id);
+    setError(null);
+    try {
+      downloadPdf(await issuedBytes(inv, loadInvoiceLogo(logoUrl)), invoiceFileName(inv));
+    } catch (err) {
+      console.error(err);
+      setError('No se pudo descargar la factura.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const total = (invoices?.length ?? 0) + (issued?.length ?? 0);
+
   async function handleDownload() {
-    if (!invoices || invoices.length === 0) return;
+    if (!invoices || !issued || total === 0) return;
     setZipping(true);
     setError(null);
     try {
       const files: Record<string, Uint8Array> = {};
+      // Emitidas, en su carpeta y con su número
+      if (issued.length > 0) {
+        const logo = loadInvoiceLogo(logoUrl);
+        for (const inv of [...issued].sort((a, b) => a.number - b.number)) {
+          files[`emitidas/${invoiceFileName(inv)}`] = await issuedBytes(inv, logo);
+        }
+      }
+      // Gastos: como hasta ahora, día_concepto
       for (const e of invoices) {
         const bytes = await downloadInvoiceBytes(e.invoice_path!);
         const day = e.entry_date.slice(8, 10);
@@ -587,6 +662,57 @@ function InvoicesDownloadModal({
           />
         </div>
 
+        {/* Emitidas a clientes */}
+        <div>
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            Emitidas a clientes
+          </p>
+          {issued === null && !error ? (
+            <div className="flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
+              <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />
+            </div>
+          ) : issued && issued.length > 0 ? (
+            <ul className="max-h-60 space-y-1.5 overflow-y-auto">
+              {issued.map((inv) => (
+                <li
+                  key={inv.id}
+                  className="flex min-w-0 items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] py-2 pl-3 pr-1.5"
+                >
+                  <FileText className="h-4 w-4 shrink-0 text-brand-300" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold text-zinc-100">
+                      {inv.code} · {inv.client.name}
+                    </p>
+                    <p className="text-[11px] text-zinc-500">{formatDateES(inv.issue_date)}</p>
+                  </div>
+                  <p className="shrink-0 text-xs font-semibold tabular-nums text-zinc-200">
+                    {EUR.format(inv.total)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void downloadOne(inv)}
+                    disabled={busyId === inv.id}
+                    className="btn-icon !h-8 !w-8 shrink-0"
+                    aria-label={`Descargar ${inv.code}`}
+                    title="Descargar PDF"
+                  >
+                    {busyId === inv.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="rounded-xl border border-dashed border-white/10 px-3 py-2.5 text-xs text-zinc-500">
+              Este mes no se ha emitido ninguna factura.
+            </p>
+          )}
+        </div>
+
+        {/* De los gastos */}
         <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-xs text-zinc-300">
           <Paperclip className="h-4 w-4 shrink-0 text-accent-300" />
           {invoices === null && !error ? (
@@ -595,7 +721,7 @@ function InvoicesDownloadModal({
             <span>
               {invoices?.length === 0
                 ? 'Este mes no hay gastos con factura adjunta.'
-                : `${invoices?.length} ${invoices?.length === 1 ? 'factura' : 'facturas'} en ${monthNameOf(ym)}.`}
+                : `${invoices?.length} ${invoices?.length === 1 ? 'factura' : 'facturas'} de gastos en ${monthNameOf(ym)}.`}
             </span>
           )}
         </div>
@@ -609,7 +735,7 @@ function InvoicesDownloadModal({
           <button
             type="button"
             onClick={() => void handleDownload()}
-            disabled={zipping || !invoices || invoices.length === 0}
+            disabled={zipping || !invoices || !issued || total === 0}
             className="btn-primary flex-1"
           >
             <Download className="h-4 w-4" />

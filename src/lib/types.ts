@@ -144,6 +144,69 @@ export interface FinanceEntry {
 
 export type FinanceEntryInput = Omit<FinanceEntry, 'id' | 'created_at'>;
 
+/** Datos fiscales del box que salen como emisor en las facturas (solo admin) */
+export interface BillingSettings {
+  issuer_name: string | null;
+  issuer_nif: string | null;
+  /** Calle, número y piso */
+  issuer_address1: string | null;
+  /** Código postal, localidad y provincia */
+  issuer_address2: string | null;
+}
+
+/** Emisor o cliente tal y como quedó guardado en la factura */
+export interface InvoiceParty {
+  name: string;
+  nif?: string | null;
+  address1?: string | null;
+  address2?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}
+
+/** Línea de una factura emitida (importes en €, precios del plan con IVA incluido) */
+export interface InvoiceLine {
+  concept: string;
+  detail: string | null;
+  quantity: number;
+  /** Precio unitario sin IVA (4 decimales) */
+  unit_price: number;
+  /** Precio unitario final, con IVA */
+  unit_price_with_vat: number;
+  vat_rate: number;
+  /** Importe de la línea sin IVA */
+  base: number;
+  /** Importe de la línea con IVA */
+  total: number;
+}
+
+/** Factura emitida a un socio (con la foto de los datos del momento) */
+export interface IssuedInvoice {
+  id: string;
+  series: string;
+  number: number;
+  /** Número completo, p. ej. F2026-00001 */
+  code: string;
+  issue_date: string;
+  member_id: string | null;
+  issuer: InvoiceParty;
+  client: InvoiceParty;
+  lines: InvoiceLine[];
+  vat_rate: number;
+  base: number;
+  vat: number;
+  total: number;
+  /** Ruta del PDF en el bucket `invoices` (null si aún no se ha guardado) */
+  pdf_path: string | null;
+  created_at?: string;
+}
+
+/** Producto pedido al emitir: un plan (o la cuota estándar si plan_id es null) */
+export interface InvoiceItemInput {
+  plan_id: string | null;
+  quantity: number;
+}
+
 export interface Member {
   id: string;
   member_no: number;
