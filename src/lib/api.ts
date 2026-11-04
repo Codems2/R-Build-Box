@@ -32,15 +32,7 @@ import type {
   WeekStatus,
 } from './types';
 import { countKey, memberFullName } from './types';
-import {
-  capFirst,
-  invoiceTotals,
-  lineAmounts,
-  manualLineAmounts,
-  manualTotals,
-  round2,
-  VAT_RATE,
-} from './invoiceMath';
+import { capFirst, invoiceTotals, lineAmounts, round2, VAT_RATE } from './invoiceMath';
 import { mondayOfWeekISO, shiftISO, todayISO } from './dates';
 
 const LS_SETTINGS = 'rmbox_settings_v1';
@@ -1448,9 +1440,9 @@ function createInvoiceDemo(o: {
   return inv;
 }
 
-// ----- Facturas de asesorías (todo a mano, precios sin IVA) -------------------
+// ----- Facturas de asesorías deportivas (bonos escritos a mano) ---------------
 
-/** Emite una factura de asesoría (serie A): cliente y conceptos escritos a mano */
+/** Emite una factura de asesoría (serie A): cliente y bonos escritos a mano, precio con IVA */
 export async function issueManualInvoice(
   issueDate: string,
   client: ManualInvoiceClient,
@@ -1479,19 +1471,20 @@ export async function issueManualInvoice(
   if (!address1 || address1.length > 120 || address2.length > 120) throw invoiceError('CLIENT_ADDRESS_MISSING');
   if (lines.length === 0) throw invoiceError('NO_ITEMS');
   if (lines.length > 10) throw invoiceError('TOO_MANY_ITEMS');
+  // Bonos: cantidad entera y precio final con IVA incluido (como el box)
   const built: InvoiceLine[] = lines.map((l) => {
     const concept = sp(l.concept);
     if (!concept || concept.length > 120) throw invoiceError('BAD_CONCEPT');
-    if (!(l.quantity > 0) || l.quantity > 9999 || round2(l.quantity) !== l.quantity) throw invoiceError('BAD_QUANTITY');
+    if (!Number.isInteger(l.quantity) || l.quantity < 1 || l.quantity > 99) throw invoiceError('BAD_QUANTITY');
     if (!(l.price > 0) || l.price > 999999) throw invoiceError('BAD_PRICE');
     const price = round2(l.price);
-    const { base, total } = manualLineAmounts(l.quantity, price);
+    const { base, total } = lineAmounts(price, l.quantity);
     return {
       concept,
       detail: null,
       quantity: l.quantity,
-      unit_price: price,
-      unit_price_with_vat: Math.round(price * (1 + VAT_RATE / 100) * 10000) / 10000,
+      unit_price: Math.round((price / (1 + VAT_RATE / 100)) * 10000) / 10000,
+      unit_price_with_vat: price,
       vat_rate: VAT_RATE,
       base,
       total,
@@ -1504,7 +1497,7 @@ export async function issueManualInvoice(
     client: { name, nif, address1, ...(address2 ? { address2 } : {}) },
     issueDate,
     lines: built,
-    ...manualTotals(built),
+    ...invoiceTotals(built),
     billing,
   });
 }

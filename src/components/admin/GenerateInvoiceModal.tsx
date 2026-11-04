@@ -21,16 +21,7 @@ import {
   issueManualInvoice,
   updateMemberBilling,
 } from '../../lib/api';
-import {
-  capFirst,
-  invoiceTotals,
-  lineAmounts,
-  manualLineAmounts,
-  manualTotals,
-  parseAmount,
-  round2,
-  VAT_RATE,
-} from '../../lib/invoiceMath';
+import { capFirst, invoiceTotals, lineAmounts, parseAmount, round2, VAT_RATE } from '../../lib/invoiceMath';
 import { todayISO } from '../../lib/dates';
 import { useAuth } from '../../lib/auth';
 import { memberFullName, type IssuedInvoice, type Member, type MemberBilling } from '../../lib/types';
@@ -58,8 +49,8 @@ function errorDeFecha(fecha: string, ultima: string | null): string | null {
  * Generar factura, con dos pestañas:
  *  · Box Thai: cliente de la lista de socios, productos de los planes (precio
  *    con IVA incluido) y fecha. El NIF y la dirección se guardan en su ficha.
- *  · Asesorías: todo escrito a mano; precios sin IVA (se suma el 21 %) y
- *    numeración propia (serie A).
+ *  · Asesorías deportivas: cliente y bonos escritos a mano; precio del bono
+ *    con IVA incluido y numeración propia (serie A).
  * Al guardar, la factura se descarga en el dispositivo y queda en «Facturas».
  */
 export default function GenerateInvoiceModal({
@@ -572,18 +563,19 @@ function BoxThaiForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e:
 }
 
 // ===========================================================================
-// Pestaña Asesorías: todo a mano, precios sin IVA
+// Pestaña Asesorías deportivas: cliente y bonos escritos a mano.
+// Cada línea es un bono (cantidad entera) con su precio final, IVA incluido.
 // ===========================================================================
 
-interface FilaManual {
+interface FilaBono {
   id: number;
   concept: string;
-  qty: string;
+  qty: number;
   price: string;
 }
 
 let siguienteFila = 1;
-const filaVacia = (): FilaManual => ({ id: siguienteFila++, concept: '', qty: '1', price: '' });
+const filaVacia = (): FilaBono => ({ id: siguienteFila++, concept: '', qty: 1, price: '' });
 
 function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e: EmisionPdf) => void }) {
   const [cargado, setCargado] = useState<{ emisorOk: boolean; ultimaFecha: string | null } | null>(null);
@@ -593,7 +585,7 @@ function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e
   const [nif, setNif] = useState('');
   const [dir1, setDir1] = useState('');
   const [dir2, setDir2] = useState('');
-  const [filas, setFilas] = useState<FilaManual[]>(() => [filaVacia()]);
+  const [filas, setFilas] = useState<FilaBono[]>(() => [filaVacia()]);
   const [fecha, setFecha] = useState(todayISO());
   const [intentado, setIntentado] = useState(false);
 
@@ -612,17 +604,15 @@ function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e
     };
   }, []);
 
-  // Cada fila: cantidad y precio válidos y su importe sin IVA
+  // Cada bono: precio válido y su importe (con IVA) y base
   const lineas = filas.map((f) => {
-    const qty = parseAmount(f.qty);
     const price = parseAmount(f.price);
-    const qtyOk = qty !== null && qty > 0 && qty <= 9999 && round2(qty) === qty;
     const priceOk = price !== null && price > 0 && price <= 999999;
     const conceptOk = f.concept.trim().length > 0;
-    const importe = qtyOk && priceOk ? manualLineAmounts(qty, round2(price)).base : null;
-    return { ...f, qtyN: qty, priceN: price, qtyOk, priceOk, conceptOk, base: importe ?? 0, ok: qtyOk && priceOk && conceptOk };
+    const importe = priceOk ? lineAmounts(round2(price), f.qty) : { total: 0, base: 0 };
+    return { ...f, priceN: price, priceOk, conceptOk, ...importe, ok: priceOk && conceptOk };
   });
-  const totales = manualTotals(lineas.filter((l) => l.ok));
+  const totales = invoiceTotals(lineas.filter((l) => l.ok));
 
   const nifLimpio = nif.replace(/[\s-]/g, '');
   const faltan = {
@@ -641,8 +631,10 @@ function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e
       !fechaError,
   );
 
-  const cambiarFila = (id: number, k: 'concept' | 'qty' | 'price', v: string) =>
+  const cambiarFila = (id: number, k: 'concept' | 'price', v: string) =>
     setFilas((fs) => fs.map((f) => (f.id === id ? { ...f, [k]: v } : f)));
+  const cambiarBonos = (id: number, delta: number) =>
+    setFilas((fs) => fs.map((f) => (f.id === id ? { ...f, qty: Math.max(1, Math.min(99, f.qty + delta)) } : f)));
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -655,7 +647,7 @@ function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e
       inv = await issueManualInvoice(
         fecha,
         { name: nombre, nif, address1: dir1, address2: dir2.trim() || null },
-        lineas.map((l) => ({ concept: l.concept, quantity: l.qtyN!, price: round2(l.priceN!) })),
+        lineas.map((l) => ({ concept: l.concept, quantity: l.qty, price: round2(l.priceN!) })),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo emitir la factura.');
@@ -740,18 +732,18 @@ function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e
         </div>
       </div>
 
-      {/* ===== Conceptos ===== */}
+      {/* ===== Bonos ===== */}
       <div>
-        <p className={LABEL}>Productos o servicios</p>
+        <p className={LABEL}>Bonos contratados</p>
         <div className="space-y-2">
           {lineas.map((l, i) => (
             <div key={l.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-2">
               <div className="flex items-center gap-2">
                 <input
                   maxLength={120}
-                  aria-label={`Concepto de la línea ${i + 1}`}
+                  aria-label={`Bono ${i + 1}`}
                   className={`input !py-2 text-sm${marca(!l.conceptOk)}`}
-                  placeholder="Concepto (p. ej. Asesoría fiscal trimestral)"
+                  placeholder="Bono (p. ej. Bono 4 asesorías deportivas)"
                   value={l.concept}
                   onChange={(e) => cambiarFila(l.id, 'concept', e.target.value)}
                 />
@@ -759,7 +751,7 @@ function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e
                   <button
                     type="button"
                     onClick={() => setFilas((fs) => fs.filter((f) => f.id !== l.id))}
-                    aria-label={`Quitar la línea ${i + 1}`}
+                    aria-label={`Quitar el bono ${i + 1}`}
                     className="flex h-8 w-7 shrink-0 items-center justify-center text-zinc-500 transition hover:text-brand-300"
                   >
                     <X className="h-4 w-4" />
@@ -767,29 +759,45 @@ function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e
                 )}
               </div>
               <div className="mt-2 flex items-center gap-2">
-                <input
-                  inputMode="decimal"
-                  aria-label={`Cantidad de la línea ${i + 1}`}
-                  className={`input !w-16 shrink-0 !px-2.5 !py-2 text-center text-sm${marca(!l.qtyOk)}`}
-                  value={l.qty}
-                  onChange={(e) => cambiarFila(l.id, 'qty', e.target.value)}
-                />
-                <span className="shrink-0 text-xs text-zinc-500">×</span>
-                <div className="relative min-w-0 flex-1">
+                {/* Cuántos bonos iguales (enteros) */}
+                <div className="flex shrink-0 items-center rounded-lg border border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => cambiarBonos(l.id, -1)}
+                    disabled={l.qty <= 1}
+                    aria-label={`Un bono menos en la línea ${i + 1}`}
+                    className="flex h-9 w-8 items-center justify-center text-zinc-400 transition hover:text-white disabled:opacity-40"
+                  >
+                    <Minus className="h-3.5 w-3.5" />
+                  </button>
+                  <span className="w-6 text-center text-xs font-semibold tabular-nums text-white">{l.qty}</span>
+                  <button
+                    type="button"
+                    onClick={() => cambiarBonos(l.id, 1)}
+                    disabled={l.qty >= 99}
+                    aria-label={`Un bono más en la línea ${i + 1}`}
+                    className="flex h-9 w-8 items-center justify-center text-zinc-400 transition hover:text-white disabled:opacity-40"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                {/* En pantallas muy estrechas sin «×» para dejar sitio al precio */}
+                <span className="hidden shrink-0 text-xs text-zinc-500 min-[360px]:inline">×</span>
+                <div className="relative min-w-[4.5rem] flex-1">
                   <input
                     inputMode="decimal"
-                    aria-label={`Precio sin IVA de la línea ${i + 1}`}
-                    className={`input !py-2 pr-7 text-sm${marca(!l.priceOk)}`}
-                    placeholder="Precio sin IVA"
+                    aria-label={`Precio del bono ${i + 1}`}
+                    className={`input !py-2 !pl-2.5 !pr-6 text-sm${marca(!l.priceOk)}`}
+                    placeholder="Precio"
                     value={l.price}
                     onChange={(e) => cambiarFila(l.id, 'price', e.target.value)}
                   />
-                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500">
+                  <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-zinc-500">
                     €
                   </span>
                 </div>
-                <p className="w-[4.5rem] shrink-0 text-right text-xs font-semibold tabular-nums text-zinc-100">
-                  {l.qtyOk && l.priceOk ? EUR.format(l.base) : '—'}
+                <p className="w-[4.25rem] shrink-0 text-right text-xs font-semibold tabular-nums text-zinc-100">
+                  {l.priceOk ? EUR.format(l.total) : '—'}
                 </p>
               </div>
             </div>
@@ -801,18 +809,18 @@ function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e
             onClick={() => setFilas((fs) => [...fs, filaVacia()])}
             className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 px-3 py-2.5 text-xs font-medium text-zinc-300 transition hover:border-white/30 hover:text-white"
           >
-            <Plus className="h-4 w-4" /> Añadir otra línea
+            <Plus className="h-4 w-4" /> Añadir otro bono
           </button>
         )}
       </div>
 
       <CampoFecha id="ase-date" fecha={fecha} onFecha={setFecha} ultima={cargado.ultimaFecha} error={fechaError} />
 
-      <Totales {...totales} nota={`Precios sin IVA: se suma el ${VAT_RATE} %.`} />
+      <Totales {...totales} nota="Precios de los bonos con IVA incluido." />
 
       {intentado && !listo && !error && (
         <p className="text-xs text-brand-300">
-          Completa el nombre, el NIF y la dirección del cliente, y el concepto, la cantidad y el precio de cada línea.
+          Completa el nombre, el NIF y la dirección del cliente, y el nombre y el precio de cada bono.
         </p>
       )}
       {error && <p className="text-sm text-brand-300">{error}</p>}

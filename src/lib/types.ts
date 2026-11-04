@@ -184,7 +184,7 @@ export interface InvoiceLine {
   total: number;
 }
 
-/** box = factura del box (serie F, precios con IVA); asesoria = a mano (serie A, sin IVA) */
+/** box = factura del box (serie F); asesoria = bonos de asesoría deportiva a mano (serie A) */
 export type InvoiceKind = 'box' | 'asesoria';
 
 /** Factura emitida (con la foto de los datos del momento) */
@@ -224,7 +224,7 @@ export interface ManualInvoiceClient {
   address2: string | null;
 }
 
-/** Línea de una factura de asesoría: precio unitario SIN IVA */
+/** Bono de una factura de asesoría deportiva: cantidad entera y precio final (IVA incluido) */
 export interface ManualInvoiceLine {
   concept: string;
   quantity: number;
