@@ -1,5 +1,17 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Briefcase, Check, ChevronDown, Dumbbell, Loader2, Minus, Plus, Search, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import {
+  Briefcase,
+  Check,
+  ChevronDown,
+  Database,
+  Dumbbell,
+  FileDown,
+  Loader2,
+  Minus,
+  Plus,
+  Search,
+  X,
+} from 'lucide-react';
 import Modal from '../Modal';
 import { matchesQuery } from './MemberFilters';
 import {
@@ -22,8 +34,16 @@ import {
   updateMemberBilling,
 } from '../../lib/api';
 import { capFirst, invoiceTotals, lineAmounts, parseAmount, round2, VAT_RATE } from '../../lib/invoiceMath';
+import { draftInvoice, draftLine } from '../../lib/invoiceDraft';
+import { buildInvoicePdf, downloadPdf, invoiceFileName } from '../../lib/invoicePdf';
 import { todayISO } from '../../lib/dates';
-import { memberFullName, type IssuedInvoice, type Member, type MemberBilling } from '../../lib/types';
+import {
+  memberFullName,
+  type BillingSettings,
+  type IssuedInvoice,
+  type Member,
+  type MemberBilling,
+} from '../../lib/types';
 
 const EUR = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
 const fechaES = (iso: string) => iso.split('-').reverse().join('/');
@@ -140,6 +160,8 @@ interface DatosBox {
   members: Member[];
   billing: Record<string, MemberBilling>;
   productos: Producto[];
+  /** Datos fiscales del box (emisor), también para los borradores */
+  emisor: BillingSettings;
   emisorOk: boolean;
   ultimaFecha: string | null;
 }
@@ -160,6 +182,9 @@ function BoxThaiForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e:
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Tras pulsar «Guardar»: ¿se guarda en la base de datos o solo un borrador?
+  const [confirmando, setConfirmando] = useState(false);
+  const [nota, setNota] = useState<string | null>(null);
 
   // Al montarse (cada vez que se abre el modal): datos frescos
   useEffect(() => {
@@ -200,6 +225,7 @@ function BoxThaiForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e:
           members: [...members].sort((a, b) => memberFullName(a).localeCompare(memberFullName(b), 'es')),
           billing,
           productos,
+          emisor,
           emisorOk: Boolean(emisor.issuer_name?.trim() && emisor.issuer_nif?.trim()),
           ultimaFecha,
         });
@@ -250,8 +276,41 @@ function BoxThaiForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e:
     });
   }
 
-  async function handleSubmit(e: FormEvent) {
+  // «Guardar» no emite todavía: primero pregunta si se guarda o solo se descarga un borrador
+  function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!listo || !cliente || !datos || saving) return;
+    setError(null);
+    setNota(null);
+    setConfirmando(true);
+  }
+
+  // No: borrador sin número; no se guarda nada (tampoco el NIF en la ficha)
+  async function soloBorrador() {
+    if (!cliente || !datos) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const inv = draftInvoice(
+        'box',
+        fecha,
+        datos.emisor,
+        memberParty(cliente, fiscal),
+        lineas.map((l) => draftLine(l.name, l.detail, l.price, l.qty)),
+      );
+      downloadPdf(await buildInvoicePdf(inv), invoiceFileName(inv));
+      setConfirmando(false);
+      setNota('Borrador descargado. No se ha guardado nada: cuando quieras emitirla, vuelve a pulsar «Guardar».');
+    } catch (err) {
+      console.error(err);
+      setError('No se pudo generar el borrador.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Sí: se emite (número correlativo), se guarda y se descarga la definitiva
+  async function guardarYEmitir() {
     if (!listo || !cliente || !datos || saving) return;
     setSaving(true);
     setError(null);
@@ -279,6 +338,7 @@ function BoxThaiForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e:
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo emitir la factura.');
       setSaving(false);
+      setConfirmando(false);
       return;
     }
 
@@ -554,8 +614,19 @@ function BoxThaiForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e:
 
       {lineas.length > 0 && <Totales {...totales} nota="Los precios de los planes llevan el IVA incluido." />}
 
+      {nota && <NotaBorrador texto={nota} />}
       {error && <p className="text-sm text-brand-300">{error}</p>}
-      <Botones onClose={onClose} listo={listo} saving={saving} />
+      {confirmando ? (
+        <ConfirmarGuardado
+          serie={`F${fecha.slice(0, 4)}`}
+          saving={saving}
+          onGuardar={() => void guardarYEmitir()}
+          onBorrador={() => void soloBorrador()}
+          onVolver={() => setConfirmando(false)}
+        />
+      ) : (
+        <Botones onClose={onClose} listo={listo} saving={saving} />
+      )}
     </form>
   );
 }
@@ -576,7 +647,11 @@ let siguienteFila = 1;
 const filaVacia = (): FilaBono => ({ id: siguienteFila++, concept: '', qty: 1, price: '' });
 
 function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e: EmisionPdf) => void }) {
-  const [cargado, setCargado] = useState<{ emisorOk: boolean; ultimaFecha: string | null } | null>(null);
+  const [cargado, setCargado] = useState<{
+    emisor: BillingSettings;
+    emisorOk: boolean;
+    ultimaFecha: string | null;
+  } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [nombre, setNombre] = useState('');
@@ -589,12 +664,20 @@ function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmando, setConfirmando] = useState(false);
+  const [nota, setNota] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     Promise.all([fetchBillingSettings(), fetchLastInvoiceDate('asesoria')])
       .then(([emisor, ultimaFecha]) => {
-        if (active) setCargado({ emisorOk: Boolean(emisor.issuer_name?.trim() && emisor.issuer_nif?.trim()), ultimaFecha });
+        if (active) {
+          setCargado({
+            emisor,
+            emisorOk: Boolean(emisor.issuer_name?.trim() && emisor.issuer_nif?.trim()),
+            ultimaFecha,
+          });
+        }
       })
       .catch(() => active && setLoadError('No se pudieron cargar los datos de facturación.'));
     return () => {
@@ -634,9 +717,48 @@ function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e
   const cambiarBonos = (id: number, delta: number) =>
     setFilas((fs) => fs.map((f) => (f.id === id ? { ...f, qty: Math.max(1, Math.min(99, f.qty + delta)) } : f)));
 
-  async function handleSubmit(e: FormEvent) {
+  // «Guardar» no emite todavía: primero pregunta si se guarda o solo se descarga un borrador
+  function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setIntentado(true);
+    if (!listo || saving) return;
+    setError(null);
+    setNota(null);
+    setConfirmando(true);
+  }
+
+  // No: borrador sin número; no se guarda nada
+  async function soloBorrador() {
+    if (!cargado) return;
+    setSaving(true);
+    setError(null);
+    const sp = (v: string) => v.replace(/\s+/g, ' ').trim();
+    try {
+      const inv = draftInvoice(
+        'asesoria',
+        fecha,
+        cargado.emisor,
+        {
+          name: sp(nombre),
+          nif: nif.replace(/[\s-]/g, '').toUpperCase(),
+          address1: sp(dir1),
+          address2: sp(dir2) || null,
+        },
+        lineas.map((l) => draftLine(sp(l.concept), null, round2(l.priceN!), l.qty)),
+      );
+      downloadPdf(await buildInvoicePdf(inv), invoiceFileName(inv));
+      setConfirmando(false);
+      setNota('Borrador descargado. No se ha guardado nada: cuando quieras emitirla, vuelve a pulsar «Guardar».');
+    } catch (err) {
+      console.error(err);
+      setError('No se pudo generar el borrador.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Sí: se emite (número correlativo de la serie A), se guarda y se descarga
+  async function guardarYEmitir() {
     if (!listo || saving) return;
     setSaving(true);
     setError(null);
@@ -650,6 +772,7 @@ function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo emitir la factura.');
       setSaving(false);
+      setConfirmando(false);
       return;
     }
     const emision = await emitirPdf(inv);
@@ -820,8 +943,19 @@ function AsesoriaForm({ onClose, onIssued }: { onClose: () => void; onIssued: (e
           Completa el nombre, el NIF y la dirección del cliente, y el nombre y el precio de cada bono.
         </p>
       )}
+      {nota && <NotaBorrador texto={nota} />}
       {error && <p className="text-sm text-brand-300">{error}</p>}
-      <Botones onClose={onClose} listo={Boolean(cargado.emisorOk) && !saving} saving={saving} />
+      {confirmando ? (
+        <ConfirmarGuardado
+          serie={`A${fecha.slice(0, 4)}`}
+          saving={saving}
+          onGuardar={() => void guardarYEmitir()}
+          onBorrador={() => void soloBorrador()}
+          onVolver={() => setConfirmando(false)}
+        />
+      ) : (
+        <Botones onClose={onClose} listo={Boolean(cargado.emisorOk) && !saving} saving={saving} />
+      )}
     </form>
   );
 }
@@ -880,6 +1014,87 @@ function Totales({ base, vat, total, nota }: { base: number; vat: number; total:
       </div>
       <p className="text-[11px] text-zinc-500">{nota}</p>
     </div>
+  );
+}
+
+/**
+ * Pregunta tras pulsar «Guardar». Guardar asigna el siguiente número de la
+ * serie y no se puede deshacer; el borrador no tiene número ni se guarda.
+ */
+function ConfirmarGuardado({
+  serie,
+  saving,
+  onGuardar,
+  onBorrador,
+  onVolver,
+}: {
+  serie: string;
+  saving: boolean;
+  onGuardar: () => void;
+  onBorrador: () => void;
+  onVolver: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // Que se vea aunque el formulario sea largo
+  useEffect(() => {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      role="alertdialog"
+      aria-labelledby="inv-confirm-title"
+      className="space-y-3 rounded-2xl border border-brand-500/30 bg-brand-600/10 p-3.5"
+    >
+      <div className="flex items-start gap-2.5">
+        <Database className="mt-0.5 h-4 w-4 shrink-0 text-brand-300" />
+        <div className="min-w-0">
+          <p id="inv-confirm-title" className="text-sm font-semibold text-white">
+            ¿Guardar la factura en la base de datos?
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+            Si la guardas, se le asigna el siguiente número de la serie {serie}, se descarga y queda
+            en «Facturas». Una factura guardada ya no se puede borrar.
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+            Si no, se descarga un borrador sin número que no vale como factura y no se guarda nada.
+          </p>
+        </div>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button type="button" onClick={onBorrador} disabled={saving} className="btn-ghost flex-1 whitespace-nowrap">
+          <FileDown className="h-4 w-4 shrink-0" /> No, solo borrador
+        </button>
+        <button type="button" onClick={onGuardar} disabled={saving} className="btn-primary flex-1 whitespace-nowrap">
+          {saving ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" /> Un momento…
+            </>
+          ) : (
+            <>
+              <Check className="h-4 w-4 shrink-0" /> Sí, guardar
+            </>
+          )}
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={onVolver}
+        disabled={saving}
+        className="w-full text-center text-xs font-medium text-zinc-400 transition hover:text-white"
+      >
+        Volver al formulario
+      </button>
+    </div>
+  );
+}
+
+function NotaBorrador({ texto }: { texto: string }) {
+  return (
+    <p className="flex items-start gap-2 rounded-xl border border-accent-500/25 bg-accent-500/10 px-3 py-2.5 text-xs text-accent-200">
+      <FileDown className="mt-0.5 h-4 w-4 shrink-0" /> {texto}
+    </p>
   );
 }
 

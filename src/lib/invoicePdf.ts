@@ -67,7 +67,15 @@ function hexToRgb(rgb: (r: number, g: number, b: number) => RGB, h: string): RGB
   );
 }
 
-/** Nombre de archivo: F2026-00001_Nombre_Apellido.pdf */
+/**
+ * Borrador: lo que se descarga sin guardar la factura. No tiene número (la
+ * numeración la asigna la base de datos al guardar) y va marcado como
+ * BORRADOR para que no se confunda con una factura válida.
+ */
+export const DRAFT_CODE = 'BORRADOR';
+export const isDraft = (inv: IssuedInvoice) => inv.code === DRAFT_CODE;
+
+/** Nombre de archivo: F2026-00001_Nombre_Apellido.pdf (o BORRADOR_Nombre_Apellido.pdf) */
 export function invoiceFileName(inv: IssuedInvoice): string {
   const slug =
     Array.from(inv.client.name, (c) => SIN_TILDE[c] ?? c)
@@ -82,7 +90,8 @@ export function invoiceFileName(inv: IssuedInvoice): string {
 }
 
 export async function buildInvoicePdf(inv: IssuedInvoice): Promise<Uint8Array> {
-  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+  const { PDFDocument, StandardFonts, degrees, rgb } = await import('pdf-lib');
+  const borrador = isDraft(inv);
   const C = {
     marca: hexToRgb(rgb, HEX.marca),
     tinta: hexToRgb(rgb, HEX.tinta),
@@ -93,7 +102,7 @@ export async function buildInvoicePdf(inv: IssuedInvoice): Promise<Uint8Array> {
   };
 
   const pdf = await PDFDocument.create();
-  pdf.setTitle(`Factura ${inv.code}`);
+  pdf.setTitle(borrador ? `Borrador de factura · ${inv.client.name}` : `Factura ${inv.code}`);
   pdf.setAuthor(inv.issuer.name);
   pdf.setLanguage('es-ES');
   const page = pdf.addPage([PAG.w, PAG.h]);
@@ -153,9 +162,9 @@ export async function buildInvoicePdf(inv: IssuedInvoice): Promise<Uint8Array> {
 
   // ===== Título, número y fecha ==============================================
   barra(46.8, 176.4, 192.4);
-  texto('FACTURA', 55.5, 188.4, 11, bold, C.tinta);
+  texto(borrador ? 'BORRADOR DE FACTURA' : 'FACTURA', 55.5, 188.4, 11, bold, borrador ? C.marca : C.tinta);
   for (const [x, etq, valor] of [
-    [387.0, 'Nº DE FACTURA', inv.code],
+    [387.0, 'Nº DE FACTURA', borrador ? 'Sin asignar' : inv.code],
     [474.7, 'FECHA DE EXPEDICIÓN', fechaES(inv.issue_date)],
   ] as const) {
     texto(etq, x, 179.6, 6.5, bold, C.texto);
@@ -228,6 +237,32 @@ export async function buildInvoicePdf(inv: IssuedInvoice): Promise<Uint8Array> {
 
   // ===== Pie (solo el filete, como en la plantilla) ==========================
   filete(787.5, 0.6, 45.8);
+
+  // ===== Borrador: marca de agua y aviso =====================================
+  if (borrador) {
+    const marca = 'BORRADOR';
+    const size = 96;
+    const w = bold.widthOfTextAtSize(marca, size);
+    // En diagonal, centrada en la página
+    const ang = (35 * Math.PI) / 180;
+    page.drawText(marca, {
+      x: PAG.w / 2 - (Math.cos(ang) * w) / 2 + (Math.sin(ang) * size * 0.35),
+      y: PAG.h / 2 - (Math.sin(ang) * w) / 2 - (Math.cos(ang) * size * 0.35),
+      size,
+      font: bold,
+      color: C.marca,
+      opacity: 0.08,
+      rotate: degrees(35),
+    });
+    texto(
+      'Borrador sin validez fiscal: esta factura no se ha emitido ni guardado y no tiene número.',
+      45.8,
+      800,
+      7.5,
+      bold,
+      C.marca,
+    );
+  }
 
   return pdf.save();
 }
